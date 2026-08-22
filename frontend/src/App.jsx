@@ -3,8 +3,14 @@ import './App.css';
 
 const API_URL = 'http://localhost:3002/api/convert';
 
+/* =========================
+   JSON FORMATTER
+========================= */
+
 function formatJson(data) {
-  if (!data) return '';
+  if (!data) {
+    return '';
+  }
 
   try {
     return JSON.stringify(data, null, 2);
@@ -13,46 +19,77 @@ function formatJson(data) {
   }
 }
 
+/* =========================
+   HTML FORMATTER
+========================= */
+
 function formatHtml(html) {
-  if (!html) return '';
+  if (!html) {
+    return '';
+  }
 
-  let formatted = html
-    .replace(/>\s*</g, '><')
-    .replace(/></g, '>\n<');
+  try {
+    let formatted = html
+      .replace(/>\s+</g, '><')
+      .replace(/></g, '>\n<');
 
-  const lines = formatted.split('\n');
+    const lines = formatted.split('\n');
 
-  let indent = 0;
+    let indent = 0;
 
-  return lines
-    .map((line) => {
-      const text = line.trim();
+    return lines
+      .map((line) => {
+        const text = line.trim();
 
-      if (!text) return '';
+        if (!text) {
+          return '';
+        }
 
-      if (
-        /^<\//.test(text) &&
-        indent > 0
-      ) {
-        indent--;
-      }
+        /*
+         * Closing tag reduces indentation
+         */
+        if (/^<\/[^>]+>/.test(text)) {
+          indent = Math.max(0, indent - 1);
+        }
 
-      const result =
-        '  '.repeat(indent) + text;
+        const result =
+          '  '.repeat(indent) + text;
 
-      if (
-        /^<[^/!][^>]*>$/.test(text) &&
-        !/<\/[^>]+>$/.test(text) &&
-        !/<(img|source|input|br|hr|meta|link)\b/i.test(text)
-      ) {
-        indent++;
-      }
+        /*
+         * Opening tag increases indentation.
+         */
+        const isOpeningTag =
+          /^<[^/!][^>]*>$/.test(text);
 
-      return result;
-    })
-    .filter(Boolean)
-    .join('\n');
+        const isSelfClosing =
+          /\/>$/.test(text) ||
+          /<(img|source|input|br|hr|meta|link)\b/i.test(
+            text,
+          );
+
+        const hasClosingTag =
+          /<\/[^>]+>$/.test(text);
+
+        if (
+          isOpeningTag &&
+          !isSelfClosing &&
+          !hasClosingTag
+        ) {
+          indent += 1;
+        }
+
+        return result;
+      })
+      .filter(Boolean)
+      .join('\n');
+  } catch {
+    return html;
+  }
 }
+
+/* =========================
+   DOWNLOAD
+========================= */
 
 function downloadFile(
   content,
@@ -67,20 +104,24 @@ function downloadFile(
   const url =
     URL.createObjectURL(blob);
 
-  const a =
+  const link =
     document.createElement('a');
 
-  a.href = url;
-  a.download = filename;
+  link.href = url;
+  link.download = filename;
 
-  document.body.appendChild(a);
+  document.body.appendChild(link);
 
-  a.click();
+  link.click();
 
-  a.remove();
+  link.remove();
 
   URL.revokeObjectURL(url);
 }
+
+/* =========================
+   APP
+========================= */
 
 function App() {
   const [file, setFile] =
@@ -104,14 +145,28 @@ function App() {
   const [copied, setCopied] =
     useState(false);
 
+  /*
+   * Dark mode by default.
+   */
   const [darkMode, setDarkMode] =
     useState(true);
 
+  /*
+   * Loader message.
+   */
   const [loadingText, setLoadingText] =
-    useState('Preparing document...');
+    useState(
+      'Preparing document...',
+    );
+
+  /* =========================
+     LOADER MESSAGES
+  ========================= */
 
   useEffect(() => {
-    if (!loading) return;
+    if (!loading) {
+      return;
+    }
 
     const messages = [
       'Reading DOCX document...',
@@ -142,18 +197,31 @@ function App() {
       clearInterval(timer);
   }, [loading]);
 
+  /* =========================
+     FILE CHANGE
+  ========================= */
+
   function handleFileChange(event) {
     const selected =
       event.target.files?.[0];
 
-    setFile(selected || null);
+    setFile(
+      selected || null,
+    );
+
     setError('');
     setResult(null);
     setActiveBlock(null);
   }
 
+  /* =========================
+     CONVERT
+  ========================= */
+
   async function handleConvert() {
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -184,7 +252,7 @@ function App() {
       if (!response.ok) {
         throw new Error(
           data?.error ||
-          'Conversion failed',
+            'Conversion failed',
         );
       }
 
@@ -197,20 +265,27 @@ function App() {
         setActiveBlock(
           firstBlock,
         );
+
         setActiveView('json');
       }
     } catch (err) {
       setError(
         err?.message ||
-        'Something went wrong while converting the document.',
+          'Something went wrong while converting the document.',
       );
     } finally {
       setLoading(false);
     }
   }
 
+  /* =========================
+     JSON
+  ========================= */
+
   function getJson() {
-    if (!activeBlock) return '';
+    if (!activeBlock) {
+      return '';
+    }
 
     return formatJson({
       title:
@@ -224,16 +299,28 @@ function App() {
     });
   }
 
+  /* =========================
+     HTML
+  ========================= */
+
   function getHtml() {
-    if (!activeBlock) return '';
+    if (!activeBlock) {
+      return '';
+    }
 
     return formatHtml(
       activeBlock.html || '',
     );
   }
 
+  /* =========================
+     COPY
+  ========================= */
+
   function copyText(text) {
-    if (!text) return;
+    if (!text) {
+      return;
+    }
 
     navigator.clipboard
       .writeText(text)
@@ -246,9 +333,11 @@ function App() {
       });
   }
 
-  function downloadBlockJson(
-    block,
-  ) {
+  /* =========================
+     DOWNLOAD JSON
+  ========================= */
+
+  function downloadBlockJson(block) {
     const content =
       formatJson({
         title: block.title,
@@ -264,9 +353,11 @@ function App() {
     );
   }
 
-  function downloadBlockHtml(
-    block,
-  ) {
+  /* =========================
+     DOWNLOAD HTML
+  ========================= */
+
+  function downloadBlockHtml(block) {
     const content =
       formatHtml(
         block.html || '',
@@ -279,11 +370,20 @@ function App() {
     );
   }
 
+  /* =========================
+     CURRENT CODE
+  ========================= */
+
   const currentCode =
     useMemo(() => {
-      if (!activeBlock) return '';
+      if (!activeBlock) {
+        return '';
+      }
 
-      if (activeView === 'json') {
+      if (
+        activeView ===
+        'json'
+      ) {
         return getJson();
       }
 
@@ -293,6 +393,10 @@ function App() {
       activeView,
     ]);
 
+  /* =========================
+     UI
+  ========================= */
+
   return (
     <div
       className={
@@ -301,8 +405,9 @@ function App() {
           : 'app'
       }
     >
-
-      {/* TOP BAR */}
+      {/* =========================
+          TOP BAR
+      ========================= */}
 
       <header className="topbar">
 
@@ -340,11 +445,19 @@ function App() {
       </header>
 
 
+      {/* =========================
+          WORKSPACE
+      ========================= */}
+
       <main className="workspace">
 
-        {/* SIDEBAR */}
+        {/* =========================
+            SIDEBAR
+        ========================= */}
 
         <aside className="sidebar">
+
+          {/* UPLOAD */}
 
           <div className="upload-box">
 
@@ -399,11 +512,9 @@ function App() {
                 handleConvert
               }
             >
-
               {loading
                 ? 'Converting...'
                 : 'Convert Document'}
-
             </button>
 
             {error && (
@@ -415,7 +526,9 @@ function App() {
           </div>
 
 
-          {/* BLOCK LIST */}
+          {/* =========================
+              BLOCK LIST
+          ========================= */}
 
           {result && (
             <div className="block-list">
@@ -484,13 +597,18 @@ function App() {
         </aside>
 
 
-        {/* CONTENT */}
+        {/* =========================
+            CONTENT
+        ========================= */}
 
         <section className="content">
 
-          {/* LOADER */}
+          {/* =========================
+              LOADER
+          ========================= */}
 
           {loading && (
+
             <div className="loading-screen">
 
               <div className="loader-card">
@@ -499,7 +617,15 @@ function App() {
                   E
                 </div>
 
-                <div className="loader-spinner" />
+                <div className="dot-loader">
+
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+
+                </div>
 
                 <h2>
                   Converting document
@@ -511,25 +637,29 @@ function App() {
 
                 <div className="loader-track">
 
-                  <div className="loader-progress" />
+                  <div className="loader-progress"></div>
 
                 </div>
 
                 <span className="loader-hint">
-                  Please wait while your
-                  EDS blocks are generated
+                  Generating your EDS
+                  blocks...
                 </span>
 
               </div>
 
             </div>
+
           )}
 
 
-          {/* EMPTY */}
+          {/* =========================
+              EMPTY
+          ========================= */}
 
           {!result &&
             !loading && (
+
               <div className="empty-state">
 
                 <div className="empty-icon">
@@ -547,10 +677,13 @@ function App() {
                 </p>
 
               </div>
+
             )}
 
 
-          {/* RESULT */}
+          {/* =========================
+              RESULT
+          ========================= */}
 
           {result &&
             activeBlock &&
@@ -558,11 +691,17 @@ function App() {
 
               <div className="result-view">
 
-                {/* SIMPLE HEADER */}
+                {/* =========================
+                    BLOCK HEADER
+                ========================= */}
 
                 <div className="content-header">
 
                   <div className="block-heading">
+
+                    <span className="block-name-label">
+                      Block Name
+                    </span>
 
                     <h2>
                       {activeBlock.title}
@@ -573,6 +712,7 @@ function App() {
                     </span>
 
                   </div>
+
 
                   <div className="block-actions">
 
@@ -601,7 +741,9 @@ function App() {
                 </div>
 
 
-                {/* TABS */}
+                {/* =========================
+                    TABS
+                ========================= */}
 
                 <div className="tabs">
 
@@ -640,7 +782,9 @@ function App() {
                 </div>
 
 
-                {/* CODE */}
+                {/* =========================
+                    CODE VIEW
+                ========================= */}
 
                 <div className="code-card">
 
@@ -673,6 +817,7 @@ function App() {
 
                   </div>
 
+
                   <pre className="code">
                     <code>
                       {currentCode}
@@ -682,21 +827,26 @@ function App() {
                 </div>
 
 
-                {/* FIELDS */}
+                {/* =========================
+                    FIELDS
+                ========================= */}
 
                 <div className="fields-panel">
 
                   <div className="fields-header">
 
                     <div>
+
                       <h3>
                         Detected Fields
                       </h3>
 
                       <p>
-                        Fields detected from
-                        the selected block
+                        Fields detected
+                        from the selected
+                        block
                       </p>
+
                     </div>
 
                     <span className="field-count">
@@ -745,6 +895,7 @@ function App() {
                 </div>
 
               </div>
+
             )}
 
         </section>
