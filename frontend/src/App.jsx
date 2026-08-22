@@ -62,6 +62,7 @@ function formatHtml(html) {
       const openingTag = line.match(/^<([a-zA-Z][\w-]*)\b/);
 
       const isClosing = Boolean(closingTag);
+
       const tagName =
         closingTag?.[1] ||
         openingTag?.[1] ||
@@ -96,21 +97,12 @@ function formatHtml(html) {
    FILE DOWNLOAD
 ========================= */
 
-function downloadFile(
-  content,
-  filename,
-  type,
-) {
-  const blob = new Blob(
-    [content],
-    { type },
-  );
+function downloadFile(content, filename, type) {
+  const blob = new Blob([content], { type });
 
-  const url =
-    URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
 
-  const link =
-    document.createElement('a');
+  const link = document.createElement('a');
 
   link.href = url;
   link.download = filename;
@@ -129,34 +121,23 @@ function downloadFile(
 ========================= */
 
 function App() {
-  const [file, setFile] =
-    useState(null);
+  const [file, setFile] = useState(null);
 
-  const [loading, setLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [loadingText, setLoadingText] =
-    useState(
-      'Preparing your document...',
-    );
+  const [loadingText, setLoadingText] = useState(
+    'Preparing your document...'
+  );
 
-  const [result, setResult] =
-    useState(null);
+  const [result, setResult] = useState(null);
 
-  const [error, setError] =
-    useState('');
+  const [error, setError] = useState('');
 
-  const [darkMode, setDarkMode] =
-    useState(false);
+  const [activeBlock, setActiveBlock] = useState(null);
 
-  const [activeBlock, setActiveBlock] =
-    useState(null);
+  const [activeView, setActiveView] = useState('json');
 
-  const [activeView, setActiveView] =
-    useState('json');
-
-  const [copied, setCopied] =
-    useState(false);
+  const [copied, setCopied] = useState(false);
 
   /* =========================
      LOADER MESSAGES
@@ -182,19 +163,13 @@ function App() {
 
     setLoadingText(messages[0]);
 
-    const timer =
-      setInterval(() => {
-        index =
-          (index + 1) %
-          messages.length;
+    const timer = setInterval(() => {
+      index = (index + 1) % messages.length;
 
-        setLoadingText(
-          messages[index],
-        );
-      }, 850);
+      setLoadingText(messages[index]);
+    }, 850);
 
-    return () =>
-      clearInterval(timer);
+    return () => clearInterval(timer);
   }, [loading]);
 
   /* =========================
@@ -202,8 +177,7 @@ function App() {
   ========================= */
 
   function handleFileChange(event) {
-    const selectedFile =
-      event.target.files?.[0];
+    const selectedFile = event.target.files?.[0];
 
     setError('');
     setResult(null);
@@ -221,9 +195,7 @@ function App() {
     ) {
       setFile(null);
 
-      setError(
-        'Please select a DOCX file.',
-      );
+      setError('Please select a DOCX file.');
 
       return;
     }
@@ -237,10 +209,7 @@ function App() {
 
   async function handleConvert() {
     if (!file) {
-      setError(
-        'Please select a DOCX file first.',
-      );
-
+      setError('Please select a DOCX file first.');
       return;
     }
 
@@ -251,50 +220,36 @@ function App() {
     setCopied(false);
 
     try {
-      const formData =
-        new FormData();
+      const formData = new FormData();
 
-      formData.append(
-        'file',
-        file,
-      );
+      formData.append('file', file);
 
-      const response =
-        await fetch(
-          API_URL,
-          {
-            method: 'POST',
-            body: formData,
-          },
-        );
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        body: formData,
+      });
 
-      const data =
-        await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data?.error ||
-            'Conversion failed.',
+          data?.error || 'Conversion failed.'
         );
       }
 
       setResult(data);
 
-      const blocks =
-        data?.detectedBlocks || [];
+      const blocks = data?.detectedBlocks || [];
 
       if (blocks.length > 0) {
-        setActiveBlock(
-          blocks[0],
-        );
-
+        setActiveBlock(blocks[0]);
         setActiveView('json');
       }
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : 'Something went wrong while converting the document.',
+          : 'Something went wrong while converting the document.'
       );
     } finally {
       setLoading(false);
@@ -311,42 +266,27 @@ function App() {
     }
 
     const definitions =
-      result?.xwalk?.definitions ||
-      [];
+      result?.xwalk?.definitions || [];
 
     const models =
-      result?.xwalk?.models ||
-      [];
+      result?.xwalk?.models || [];
 
     const filters =
-      result?.xwalk?.filters ||
-      [];
+      result?.xwalk?.filters || [];
 
-    const definition =
-      definitions.find(
-        (item) =>
-          item.id ===
-          activeBlock.id,
-      );
+    const definition = definitions.find(
+      (item) => item.id === activeBlock.id
+    );
 
-    const model =
-      models.find(
-        (item) =>
-          item.id ===
-          activeBlock.id,
-      );
-
-    /*
-      IMPORTANT:
-      Backend XWalk structure is preserved.
-    */
+    const model = models.find(
+      (item) => item.id === activeBlock.id
+    );
 
     const finalDefinition =
       definition || {
-        title:
-          activeBlock.title,
-        id:
-          activeBlock.id,
+        title: activeBlock.title,
+
+        id: activeBlock.id,
 
         plugins: {
           xwalk: {
@@ -355,14 +295,9 @@ function App() {
                 'core/franklin/components/block/v1/block',
 
               template: {
-                name:
-                  activeBlock.id,
-
-                model:
-                  activeBlock.id,
-
-                filter:
-                  activeBlock.id,
+                name: activeBlock.id,
+                model: activeBlock.id,
+                filter: activeBlock.id,
               },
             },
           },
@@ -371,23 +306,13 @@ function App() {
 
     const finalModel =
       model || {
-        id:
-          activeBlock.id,
-
-        fields:
-          activeBlock.fields ||
-          [],
+        id: activeBlock.id,
+        fields: activeBlock.fields || [],
       };
 
     const json = {
-      definitions: [
-        finalDefinition,
-      ],
-
-      models: [
-        finalModel,
-      ],
-
+      definitions: [finalDefinition],
+      models: [finalModel],
       filters,
     };
 
@@ -403,30 +328,20 @@ function App() {
       return '';
     }
 
-    return formatHtml(
-      activeBlock.html || '',
-    );
+    return formatHtml(activeBlock.html || '');
   }
 
   /* =========================
      CURRENT CODE
   ========================= */
 
-  const currentCode =
-    useMemo(() => {
-      if (
-        activeView ===
-        'html'
-      ) {
-        return getHtml();
-      }
+  const currentCode = useMemo(() => {
+    if (activeView === 'html') {
+      return getHtml();
+    }
 
-      return getJson();
-    }, [
-      activeBlock,
-      activeView,
-      result,
-    ]);
+    return getJson();
+  }, [activeBlock, activeView, result]);
 
   /* =========================
      COPY
@@ -438,9 +353,7 @@ function App() {
     }
 
     try {
-      await navigator.clipboard.writeText(
-        text,
-      );
+      await navigator.clipboard.writeText(text);
 
       setCopied(true);
 
@@ -448,9 +361,7 @@ function App() {
         setCopied(false);
       }, 1500);
     } catch {
-      setError(
-        'Unable to copy content.',
-      );
+      setError('Unable to copy content.');
     }
   }
 
@@ -458,47 +369,36 @@ function App() {
      DOWNLOAD JSON
   ========================= */
 
-  function downloadBlockJson(
-    block,
-  ) {
+  function downloadBlockJson(block) {
     if (!block) {
       return;
     }
 
     const definitions =
-      result?.xwalk?.definitions ||
-      [];
+      result?.xwalk?.definitions || [];
 
     const models =
-      result?.xwalk?.models ||
-      [];
+      result?.xwalk?.models || [];
 
     const filters =
-      result?.xwalk?.filters ||
-      [];
+      result?.xwalk?.filters || [];
 
-    const definition =
-      definitions.find(
-        (item) =>
-          item.id === block.id,
-      );
+    const definition = definitions.find(
+      (item) => item.id === block.id
+    );
 
-    const model =
-      models.find(
-        (item) =>
-          item.id === block.id,
-      );
+    const model = models.find(
+      (item) => item.id === block.id
+    );
 
     const json = {
       definitions: definition
         ? [definition]
         : [
             {
-              title:
-                block.title,
+              title: block.title,
 
-              id:
-                block.id,
+              id: block.id,
 
               plugins: {
                 xwalk: {
@@ -507,14 +407,9 @@ function App() {
                       'core/franklin/components/block/v1/block',
 
                     template: {
-                      name:
-                        block.id,
-
-                      model:
-                        block.id,
-
-                      filter:
-                        block.id,
+                      name: block.id,
+                      model: block.id,
+                      filter: block.id,
                     },
                   },
                 },
@@ -526,12 +421,8 @@ function App() {
         ? [model]
         : [
             {
-              id:
-                block.id,
-
-              fields:
-                block.fields ||
-                [],
+              id: block.id,
+              fields: block.fields || [],
             },
           ],
 
@@ -541,7 +432,7 @@ function App() {
     downloadFile(
       formatJson(json),
       `${block.id}.json`,
-      'application/json',
+      'application/json'
     );
   }
 
@@ -549,19 +440,15 @@ function App() {
      DOWNLOAD HTML
   ========================= */
 
-  function downloadBlockHtml(
-    block,
-  ) {
+  function downloadBlockHtml(block) {
     if (!block) {
       return;
     }
 
     downloadFile(
-      formatHtml(
-        block.html || '',
-      ),
+      formatHtml(block.html || ''),
       `${block.id}.html`,
-      'text/html',
+      'text/html'
     );
   }
 
@@ -574,31 +461,28 @@ function App() {
       return null;
     }
 
-    const lines =
-      currentCode.split('\n');
+    const lines = currentCode.split('\n');
 
-    return lines.map(
-      (line, index) => (
-        <div
-          className="code-line"
-          key={index}
+    return lines.map((line, index) => (
+      <div
+        className="code-line"
+        key={index}
+      >
+        <span className="line-number">
+          {index + 1}
+        </span>
+
+        <span
+          className={
+            activeView === 'json'
+              ? 'line-content json-code'
+              : 'line-content html-code'
+          }
         >
-          <span className="line-number">
-            {index + 1}
-          </span>
-
-          <span
-            className={
-              activeView === 'json'
-                ? 'line-content json-code'
-                : 'line-content html-code'
-            }
-          >
-            {line || ' '}
-          </span>
-        </div>
-      ),
-    );
+          {line || ' '}
+        </span>
+      </div>
+    ));
   }
 
   /* =========================
@@ -606,19 +490,15 @@ function App() {
   ========================= */
 
   return (
-    <div
-      className={
-        darkMode
-          ? 'app dark'
-          : 'app'
-      }
-    >
+    <div className="app dark">
+
       {/* =========================
           TOPBAR
       ========================= */}
 
       <header className="topbar">
         <div className="brand">
+
           <div className="brand-icon">
             E
           </div>
@@ -632,21 +512,8 @@ function App() {
               DOCX → EDS HTML + XWalk
             </p>
           </div>
-        </div>
 
-        <button
-          className="theme-button"
-          onClick={() =>
-            setDarkMode(
-              (value) =>
-                !value,
-            )
-          }
-        >
-          {darkMode
-            ? '☀ Light'
-            : '◐ Dark'}
-        </button>
+        </div>
       </header>
 
       {/* =========================
@@ -654,12 +521,15 @@ function App() {
       ========================= */}
 
       <main className="workspace">
+
         {/* =========================
             SIDEBAR
         ========================= */}
 
         <aside className="sidebar">
+
           <div className="upload-box">
+
             <div className="upload-icon">
               ↑
             </div>
@@ -674,6 +544,7 @@ function App() {
             </p>
 
             <label className="upload-button">
+
               <span>
                 Choose DOCX
               </span>
@@ -681,14 +552,14 @@ function App() {
               <input
                 type="file"
                 accept=".docx"
-                onChange={
-                  handleFileChange
-                }
+                onChange={handleFileChange}
               />
+
             </label>
 
             {file && (
               <div className="file-name">
+
                 <span className="file-icon">
                   DOCX
                 </span>
@@ -696,18 +567,14 @@ function App() {
                 <span className="file-text">
                   {file.name}
                 </span>
+
               </div>
             )}
 
             <button
               className="convert-button"
-              disabled={
-                !file ||
-                loading
-              }
-              onClick={
-                handleConvert
-              }
+              disabled={!file || loading}
+              onClick={handleConvert}
             >
               {loading
                 ? 'Converting...'
@@ -719,6 +586,7 @@ function App() {
                 {error}
               </div>
             )}
+
           </div>
 
           {/* =========================
@@ -727,49 +595,43 @@ function App() {
 
           {result && (
             <div className="block-list">
+
               <div className="section-title">
+
                 <span>
                   Detected Blocks
                 </span>
 
                 <span className="count">
-                  {result
-                    .detectedBlocks
-                    ?.length ||
-                    0}
+                  {result.detectedBlocks?.length || 0}
                 </span>
+
               </div>
 
               <div className="blocks-wrapper">
+
                 {result.detectedBlocks?.map(
                   (block) => (
                     <button
                       key={block.id}
                       className={
-                        activeBlock?.id ===
-                        block.id
+                        activeBlock?.id === block.id
                           ? 'block-item active'
                           : 'block-item'
                       }
                       onClick={() => {
-                        setActiveBlock(
-                          block,
-                        );
-
-                        setActiveView(
-                          'json',
-                        );
-
-                        setCopied(
-                          false,
-                        );
+                        setActiveBlock(block);
+                        setActiveView('json');
+                        setCopied(false);
                       }}
                     >
+
                       <span className="block-symbol">
                         ▦
                       </span>
 
                       <span className="block-info">
+
                         <strong>
                           {block.title}
                         </strong>
@@ -777,17 +639,22 @@ function App() {
                         <small>
                           {block.id}
                         </small>
+
                       </span>
 
                       <span className="block-arrow">
                         →
                       </span>
+
                     </button>
-                  ),
+                  )
                 )}
+
               </div>
+
             </div>
           )}
+
         </aside>
 
         {/* =========================
@@ -795,14 +662,18 @@ function App() {
         ========================= */}
 
         <section className="content">
+
           {/* =========================
               LOADING
           ========================= */}
 
           {loading && (
             <div className="loading-screen">
+
               <div className="loader-card">
+
                 <div className="loader-dots">
+
                   <span></span>
                   <span></span>
                   <span></span>
@@ -811,6 +682,7 @@ function App() {
                   <span></span>
                   <span></span>
                   <span></span>
+
                 </div>
 
                 <h2>
@@ -828,7 +700,9 @@ function App() {
                 <small>
                   Generating your EDS blocks
                 </small>
+
               </div>
+
             </div>
           )}
 
@@ -836,26 +710,27 @@ function App() {
               EMPTY
           ========================= */}
 
-          {!result &&
-            !loading && (
-              <div className="empty-state">
-                <div className="empty-icon">
-                  <span>
-                    E
-                  </span>
-                </div>
+          {!result && !loading && (
+            <div className="empty-state">
 
-                <h2>
-                  Start by uploading a DOCX
-                </h2>
-
-                <p>
-                  Your detected blocks,
-                  XWalk JSON and HTML
-                  will appear here.
-                </p>
+              <div className="empty-icon">
+                <span>
+                  E
+                </span>
               </div>
-            )}
+
+              <h2>
+                Start by uploading a DOCX
+              </h2>
+
+              <p>
+                Your detected blocks,
+                XWalk JSON and HTML
+                will appear here.
+              </p>
+
+            </div>
+          )}
 
           {/* =========================
               RESULT
@@ -864,11 +739,15 @@ function App() {
           {result &&
             activeBlock &&
             !loading && (
+
               <div className="result-view">
+
                 {/* HEADER */}
 
                 <div className="content-header">
+
                   <div className="block-heading">
+
                     <div className="block-label">
                       BLOCK NAME
                     </div>
@@ -880,13 +759,15 @@ function App() {
                     <span className="id-badge">
                       {activeBlock.id}
                     </span>
+
                   </div>
 
                   <div className="block-actions">
+
                     <button
                       onClick={() =>
                         downloadBlockJson(
-                          activeBlock,
+                          activeBlock
                         )
                       }
                     >
@@ -899,7 +780,7 @@ function App() {
                     <button
                       onClick={() =>
                         downloadBlockHtml(
-                          activeBlock,
+                          activeBlock
                         )
                       }
                     >
@@ -908,71 +789,67 @@ function App() {
                       </span>
                       HTML
                     </button>
+
                   </div>
+
                 </div>
 
                 {/* TABS */}
 
                 <div className="tabs">
+
                   <button
                     className={
-                      activeView ===
-                      'json'
+                      activeView === 'json'
                         ? 'active'
                         : ''
                     }
                     onClick={() => {
-                      setActiveView(
-                        'json',
-                      );
-
-                      setCopied(
-                        false,
-                      );
+                      setActiveView('json');
+                      setCopied(false);
                     }}
                   >
                     <span className="tab-icon">
-                      {}
+                      {'{}'}
                     </span>
+
                     JSON
                   </button>
 
                   <button
                     className={
-                      activeView ===
-                      'html'
+                      activeView === 'html'
                         ? 'active'
                         : ''
                     }
                     onClick={() => {
-                      setActiveView(
-                        'html',
-                      );
-
-                      setCopied(
-                        false,
-                      );
+                      setActiveView('html');
+                      setCopied(false);
                     }}
                   >
                     <span className="tab-icon">
                       {'</>'}
                     </span>
+
                     HTML
                   </button>
+
                 </div>
 
                 {/* CODE EDITOR */}
 
                 <div
                   className={
-                    activeView ===
-                    'json'
+                    activeView === 'json'
                       ? 'code-card json-editor'
                       : 'code-card html-editor'
                   }
                 >
+
                   <div className="code-toolbar">
+
                     <div className="code-file-info">
+
                       <span className="window-dots">
                         <i></i>
                         <i></i>
@@ -980,46 +857,50 @@ function App() {
                       </span>
 
                       <span className="file-type">
-                        {activeView ===
-                        'json'
+                        {activeView === 'json'
                           ? 'JSON'
                           : 'HTML'}
                       </span>
 
                       <span className="file-name-code">
-                        {activeView ===
-                        'json'
+                        {activeView === 'json'
                           ? `${activeBlock.id}.json`
                           : `${activeBlock.id}.html`}
                       </span>
+
                     </div>
 
                     <button
                       className="copy-button"
                       onClick={() =>
-                        copyText(
-                          currentCode,
-                        )
+                        copyText(currentCode)
                       }
                     >
                       {copied
                         ? '✓ Copied'
                         : 'Copy'}
                     </button>
+
                   </div>
 
                   <div className="code-editor">
+
                     <pre className="code">
                       {renderCode()}
                     </pre>
+
                   </div>
+
                 </div>
 
                 {/* FIELDS */}
 
                 <div className="fields-panel">
+
                   <div className="fields-header">
+
                     <div>
+
                       <h3>
                         Detected Fields
                       </h3>
@@ -1028,53 +909,55 @@ function App() {
                         Fields detected from
                         the selected block
                       </p>
+
                     </div>
 
                     <span className="field-count">
-                      {activeBlock
-                        .fields
-                        ?.length ||
-                        0}
+                      {activeBlock.fields?.length || 0}
                     </span>
+
                   </div>
 
                   <div className="fields-grid">
+
                     {activeBlock.fields?.map(
                       (field) => (
                         <div
                           className="field-card"
-                          key={
-                            field.name
-                          }
+                          key={field.name}
                         >
+
                           <div className="field-top">
+
                             <strong>
-                              {
-                                field.name
-                              }
+                              {field.name}
                             </strong>
 
                             <span>
-                              {
-                                field.component
-                              }
+                              {field.component}
                             </span>
+
                           </div>
 
                           <small>
-                            {
-                              field.label
-                            }
+                            {field.label}
                           </small>
+
                         </div>
-                      ),
+                      )
                     )}
+
                   </div>
+
                 </div>
+
               </div>
             )}
+
         </section>
+
       </main>
+
     </div>
   );
 }
