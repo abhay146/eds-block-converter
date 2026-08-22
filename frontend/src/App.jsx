@@ -1,27 +1,99 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import './App.css';
 
-const API_URL =
-  import.meta.env.VITE_API_URL ||
-  'http://localhost:3002/api/convert';
+const API_URL = 'http://localhost:3002/api/convert';
 
+function formatJson(data) {
+  if (!data) return '';
+
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return String(data);
+  }
+}
+
+function formatHtml(html) {
+  if (!html) return '';
+
+  let formatted = html
+    .replace(/>\s*</g, '><')
+    .replace(/></g, '>\n<');
+
+  const lines = formatted.split('\n');
+
+  let indent = 0;
+
+  return lines
+    .map((line) => {
+      const text = line.trim();
+
+      if (!text) return '';
+
+      if (
+        /^<\//.test(text) &&
+        indent > 0
+      ) {
+        indent--;
+      }
+
+      const result =
+        '  '.repeat(indent) + text;
+
+      if (
+        /^<[^/!][^>]*>$/.test(text) &&
+        !/<\/[^>]+>$/.test(text) &&
+        !/<(img|source|input|br|hr|meta|link)\b/i.test(text)
+      ) {
+        indent++;
+      }
+
+      return result;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function downloadFile(
+  content,
+  filename,
+  type,
+) {
+  const blob = new Blob(
+    [content],
+    { type },
+  );
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const a =
+    document.createElement('a');
+
+  a.href = url;
+  a.download = filename;
+
+  document.body.appendChild(a);
+
+  a.click();
+
+  a.remove();
+
+  URL.revokeObjectURL(url);
+}
 
 function App() {
-
   const [file, setFile] =
     useState(null);
 
   const [loading, setLoading] =
     useState(false);
 
-  const [result, setResult] =
-    useState(null);
-
   const [error, setError] =
     useState('');
 
-  const [darkMode, setDarkMode] =
-    useState(false);
+  const [result, setResult] =
+    useState(null);
 
   const [activeBlock, setActiveBlock] =
     useState(null);
@@ -32,331 +104,194 @@ function App() {
   const [copied, setCopied] =
     useState(false);
 
+  const [darkMode, setDarkMode] =
+    useState(true);
 
-  /**
-   * File select.
-   */
-  const handleFileChange =
-    (event) => {
+  const [loadingText, setLoadingText] =
+    useState('Preparing document...');
 
-      const selectedFile =
-        event.target.files?.[0];
+  useEffect(() => {
+    if (!loading) return;
 
-      setError('');
-      setResult(null);
-      setActiveBlock(null);
+    const messages = [
+      'Reading DOCX document...',
+      'Extracting document content...',
+      'Detecting EDS blocks...',
+      'Generating XWalk fields...',
+      'Formatting JSON...',
+      'Formatting HTML...',
+      'Almost ready...',
+    ];
 
-      if (!selectedFile) {
-        setFile(null);
-        return;
-      }
+    let index = 0;
 
-      if (
-        !selectedFile.name
-          .toLowerCase()
-          .endsWith('.docx')
-      ) {
+    setLoadingText(messages[0]);
 
-        setFile(null);
+    const timer =
+      setInterval(() => {
+        index =
+          (index + 1) %
+          messages.length;
 
-        setError(
-          'Please select a DOCX file.',
+        setLoadingText(
+          messages[index],
+        );
+      }, 900);
+
+    return () =>
+      clearInterval(timer);
+  }, [loading]);
+
+  function handleFileChange(event) {
+    const selected =
+      event.target.files?.[0];
+
+    setFile(selected || null);
+    setError('');
+    setResult(null);
+    setActiveBlock(null);
+  }
+
+  async function handleConvert() {
+    if (!file) return;
+
+    setLoading(true);
+    setError('');
+    setResult(null);
+    setActiveBlock(null);
+
+    try {
+      const formData =
+        new FormData();
+
+      formData.append(
+        'file',
+        file,
+      );
+
+      const response =
+        await fetch(
+          API_URL,
+          {
+            method: 'POST',
+            body: formData,
+          },
         );
 
-        return;
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+          'Conversion failed',
+        );
       }
 
-      setFile(selectedFile);
-    };
+      setResult(data);
 
+      const firstBlock =
+        data?.detectedBlocks?.[0];
 
-  /**
-   * Convert.
-   */
-  const handleConvert =
-    async () => {
-
-      if (!file) {
-
-        setError(
-          'Please select a DOCX file first.',
+      if (firstBlock) {
+        setActiveBlock(
+          firstBlock,
         );
-
-        return;
+        setActiveView('json');
       }
+    } catch (err) {
+      setError(
+        err?.message ||
+        'Something went wrong while converting the document.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
 
-      setLoading(true);
-      setError('');
-      setResult(null);
+  function getJson() {
+    if (!activeBlock) return '';
 
-      try {
+    return formatJson({
+      title:
+        activeBlock.title,
 
-        const formData =
-          new FormData();
+      id:
+        activeBlock.id,
 
-        formData.append(
-          'file',
-          file,
-        );
+      fields:
+        activeBlock.fields || [],
+    });
+  }
 
+  function getHtml() {
+    if (!activeBlock) return '';
 
-        const response =
-          await fetch(
-            API_URL,
-            {
-              method: 'POST',
-              body: formData,
-            },
-          );
+    return formatHtml(
+      activeBlock.html || '',
+    );
+  }
 
+  function copyText(text) {
+    if (!text) return;
 
-        const data =
-          await response.json();
-
-
-        if (!response.ok) {
-
-          throw new Error(
-            data.error ||
-            'Conversion failed.',
-          );
-        }
-
-
-        setResult(data);
-
-        if (
-          data.detectedBlocks?.length
-        ) {
-
-          setActiveBlock(
-            data.detectedBlocks[0],
-          );
-        }
-
-      } catch (err) {
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Something went wrong.',
-        );
-
-      } finally {
-
-        setLoading(false);
-      }
-    };
-
-
-  /**
-   * Copy.
-   */
-  const copyText =
-    async (text) => {
-
-      try {
-
-        await navigator.clipboard
-          .writeText(text);
-
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
         setCopied(true);
 
-        setTimeout(
-          () => setCopied(false),
-          1500,
-        );
+        setTimeout(() => {
+          setCopied(false);
+        }, 1500);
+      });
+  }
 
-      } catch {
-        setError(
-          'Unable to copy content.',
-        );
-      }
-    };
+  function downloadBlockJson(
+    block,
+  ) {
+    const content =
+      formatJson({
+        title: block.title,
+        id: block.id,
+        fields:
+          block.fields || [],
+      });
 
-
-  /**
-   * Download.
-   */
-  const downloadFile =
-    (
+    downloadFile(
       content,
-      filename,
-      type,
-    ) => {
+      `${block.id}.json`,
+      'application/json',
+    );
+  }
 
-      const blob =
-        new Blob(
-          [content],
-          { type },
-        );
-
-      const url =
-        URL.createObjectURL(
-          blob,
-        );
-
-      const link =
-        document.createElement(
-          'a',
-        );
-
-      link.href = url;
-      link.download = filename;
-
-      document.body.appendChild(
-        link,
+  function downloadBlockHtml(
+    block,
+  ) {
+    const content =
+      formatHtml(
+        block.html || '',
       );
 
-      link.click();
+    downloadFile(
+      content,
+      `${block.id}.html`,
+      'text/html',
+    );
+  }
 
-      link.remove();
+  const currentCode =
+    useMemo(() => {
+      if (!activeBlock) return '';
 
-      URL.revokeObjectURL(
-        url,
-      );
-    };
-
-
-  /**
-   * Download JSON for one block.
-   */
-  const downloadBlockJson =
-    (block) => {
-
-      const json =
-        JSON.stringify(
-          {
-            title: block.title,
-            id: block.id,
-            fields: block.fields,
-            xwalk: {
-              definitions: [
-                result.xwalk.definitions.find(
-                  (item) =>
-                    item.id === block.id,
-                ),
-              ],
-
-              models: [
-                result.xwalk.models.find(
-                  (item) =>
-                    item.id === block.id,
-                ),
-              ],
-
-              filters: [],
-            },
-          },
-          null,
-          2,
-        );
-
-
-      downloadFile(
-        json,
-        `${block.id}.json`,
-        'application/json',
-      );
-    };
-
-
-  /**
-   * Download HTML for one block.
-   */
-  const downloadBlockHtml =
-    (block) => {
-
-      downloadFile(
-        formatHtml(
-          block.html || '',
-        ),
-
-        `${block.id}.html`,
-
-        'text/html',
-      );
-    };
-
-
-  /**
-   * JSON shown in editor.
-   */
-  const getJson =
-    () => {
-
-      if (!activeBlock || !result) {
-        return '{}';
+      if (activeView === 'json') {
+        return getJson();
       }
 
-
-      const definition =
-        result.xwalk.definitions.find(
-          (item) =>
-            item.id === activeBlock.id,
-        );
-
-
-      const model =
-        result.xwalk.models.find(
-          (item) =>
-            item.id === activeBlock.id,
-        );
-
-
-      return JSON.stringify(
-        {
-          definitions: definition
-            ? [definition]
-            : [],
-
-          models: model
-            ? [model]
-            : [],
-
-          filters: [],
-        },
-
-        null,
-
-        2,
-      );
-    };
-
-
-  /**
-   * HTML shown in editor.
-   */
-  const getHtml =
-    () => {
-
-      if (!activeBlock) {
-        return '';
-      }
-
-      return formatHtml(
-        activeBlock.html || '',
-      );
-    };
-
-
-  /**
-   * Document source.
-   */
-  const getSource =
-    () => {
-
-      if (!activeBlock) {
-        return '';
-      }
-
-      return JSON.stringify(
-        activeBlock.source || [],
-        null,
-        2,
-      );
-    };
-
+      return getHtml();
+    }, [
+      activeBlock,
+      activeView,
+    ]);
 
   return (
     <div
@@ -367,7 +302,7 @@ function App() {
       }
     >
 
-      {/* HEADER */}
+      {/* TOP BAR */}
 
       <header className="topbar">
 
@@ -389,29 +324,25 @@ function App() {
 
         </div>
 
-
         <button
           className="theme-button"
           onClick={() =>
             setDarkMode(
-              !darkMode,
+              (value) => !value,
             )
           }
         >
           {darkMode
             ? '☀ Light'
-            : '◐ Dark'}
+            : '☾ Dark'}
         </button>
 
       </header>
 
 
-      {/* MAIN */}
-
       <main className="workspace">
 
-
-        {/* LEFT */}
+        {/* SIDEBAR */}
 
         <aside className="sidebar">
 
@@ -430,7 +361,6 @@ function App() {
               generate EDS blocks.
             </p>
 
-
             <label className="upload-button">
 
               Choose DOCX
@@ -445,19 +375,19 @@ function App() {
 
             </label>
 
-
             {file && (
-
               <div className="file-name">
 
-                <span>📄</span>
+                <span>
+                  📄
+                </span>
 
-                {file.name}
+                <span>
+                  {file.name}
+                </span>
 
               </div>
-
             )}
-
 
             <button
               className="convert-button"
@@ -476,13 +406,10 @@ function App() {
 
             </button>
 
-
             {error && (
-
               <div className="error">
                 {error}
               </div>
-
             )}
 
           </div>
@@ -491,7 +418,6 @@ function App() {
           {/* BLOCK LIST */}
 
           {result && (
-
             <div className="block-list">
 
               <div className="section-title">
@@ -501,12 +427,11 @@ function App() {
                 </span>
 
                 <span className="count">
-                  {result.detectedBlocks?.length ||
-                    0}
+                  {result.detectedBlocks
+                    ?.length || 0}
                 </span>
 
               </div>
-
 
               {result.detectedBlocks?.map(
                 (block) => (
@@ -536,7 +461,7 @@ function App() {
                       ▦
                     </span>
 
-                    <span>
+                    <span className="block-info">
 
                       <strong>
                         {block.title}
@@ -554,253 +479,273 @@ function App() {
               )}
 
             </div>
-
           )}
 
         </aside>
 
 
-        {/* RIGHT */}
+        {/* CONTENT */}
 
         <section className="content">
 
+          {/* LOADER */}
 
-          {!result && (
+          {loading && (
+            <div className="loading-screen">
 
-            <div className="empty-state">
+              <div className="loader-card">
 
-              <div>
-                ◇
+                <div className="loader-logo">
+                  E
+                </div>
+
+                <div className="loader-spinner" />
+
+                <h2>
+                  Converting document
+                </h2>
+
+                <p>
+                  {loadingText}
+                </p>
+
+                <div className="loader-track">
+
+                  <div className="loader-progress" />
+
+                </div>
+
+                <span className="loader-hint">
+                  Please wait while your
+                  EDS blocks are generated
+                </span>
+
               </div>
-
-              <h2>
-                Start by uploading a DOCX
-              </h2>
-
-              <p>
-                Your detected blocks,
-                XWalk JSON and HTML
-                will appear here.
-              </p>
 
             </div>
-
           )}
 
+
+          {/* EMPTY */}
+
+          {!result &&
+            !loading && (
+              <div className="empty-state">
+
+                <div className="empty-icon">
+                  ◇
+                </div>
+
+                <h2>
+                  Start by uploading a DOCX
+                </h2>
+
+                <p>
+                  Your detected blocks,
+                  XWalk JSON and HTML
+                  will appear here.
+                </p>
+
+              </div>
+            )}
+
+
+          {/* RESULT */}
 
           {result &&
-            activeBlock && (
+            activeBlock &&
+            !loading && (
 
-            <>
+              <div className="result-view">
 
-              {/* BLOCK HEADER */}
+                {/* SIMPLE HEADER */}
 
-              <div className="content-header">
+                <div className="content-header">
 
-                <div>
+                  <div className="block-heading">
 
-                  <div className="eyebrow">
-                    BLOCK
+                    <h2>
+                      {activeBlock.title}
+                    </h2>
+
+                    <span className="id-badge">
+                      {activeBlock.id}
+                    </span>
+
                   </div>
 
-                  <h2>
-                    {activeBlock.title}
-                  </h2>
+                  <div className="block-actions">
 
-                  <span className="id-badge">
-                    {activeBlock.id}
-                  </span>
+                    <button
+                      onClick={() =>
+                        downloadBlockJson(
+                          activeBlock,
+                        )
+                      }
+                    >
+                      ↓ JSON
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        downloadBlockHtml(
+                          activeBlock,
+                        )
+                      }
+                    >
+                      ↓ HTML
+                    </button>
+
+                  </div>
+
+                </div>
+
+
+                {/* TABS */}
+
+                <div className="tabs">
+
+                  <button
+                    className={
+                      activeView ===
+                      'json'
+                        ? 'active'
+                        : ''
+                    }
+                    onClick={() =>
+                      setActiveView(
+                        'json',
+                      )
+                    }
+                  >
+                    JSON
+                  </button>
+
+                  <button
+                    className={
+                      activeView ===
+                      'html'
+                        ? 'active'
+                        : ''
+                    }
+                    onClick={() =>
+                      setActiveView(
+                        'html',
+                      )
+                    }
+                  >
+                    HTML
+                  </button>
 
                 </div>
 
 
-                <div className="block-actions">
+                {/* CODE */}
 
-                  <button
-                    onClick={() =>
-                      downloadBlockJson(
-                        activeBlock,
-                      )
-                    }
-                  >
-                    ↓ JSON
-                  </button>
+                <div className="code-card">
 
-                  <button
-                    onClick={() =>
-                      downloadBlockHtml(
-                        activeBlock,
-                      )
-                    }
-                  >
-                    ↓ HTML
-                  </button>
+                  <div className="code-toolbar">
 
-                </div>
+                    <div className="file-label">
 
-              </div>
+                      <span className="file-dot">
+                        ●
+                      </span>
 
-
-              {/* TABS */}
-
-              <div className="tabs">
-
-                <button
-                  className={
-                    activeView ===
-                    'json'
-                      ? 'active'
-                      : ''
-                  }
-                  onClick={() =>
-                    setActiveView(
-                      'json',
-                    )
-                  }
-                >
-                  JSON
-                </button>
-
-
-                <button
-                  className={
-                    activeView ===
-                    'html'
-                      ? 'active'
-                      : ''
-                  }
-                  onClick={() =>
-                    setActiveView(
-                      'html',
-                    )
-                  }
-                >
-                  HTML
-                </button>
-
-
-                <button
-                  className={
-                    activeView ===
-                    'source'
-                      ? 'active'
-                      : ''
-                  }
-                  onClick={() =>
-                    setActiveView(
-                      'source',
-                    )
-                  }
-                >
-                  Document Source
-                </button>
-
-              </div>
-
-
-              {/* CODE */}
-
-              <div className="code-card">
-
-                <div className="code-toolbar">
-
-                  <span>
-
-                    {activeView ===
-                      'json' &&
-                      `${activeBlock.id}.json`}
-
-                    {activeView ===
-                      'html' &&
-                      `${activeBlock.id}.html`}
-
-                    {activeView ===
-                      'source' &&
-                      'document-source.json'}
-
-                  </span>
-
-
-                  <button
-                    onClick={() => {
-
-                      const text =
-                        activeView ===
+                      {activeView ===
                         'json'
-                          ? getJson()
-                          : activeView ===
-                            'html'
-                            ? getHtml()
-                            : getSource();
+                        ? `${activeBlock.id}.json`
+                        : `${activeBlock.id}.html`}
 
-                      copyText(text);
-                    }}
-                  >
-                    {copied
-                      ? '✓ Copied'
-                      : 'Copy'}
-                  </button>
+                    </div>
 
-                </div>
+                    <button
+                      onClick={() =>
+                        copyText(
+                          currentCode,
+                        )
+                      }
+                    >
+                      {copied
+                        ? '✓ Copied'
+                        : 'Copy'}
+                    </button>
 
+                  </div>
 
-                <pre className="code">
-
-                  {activeView ===
-                    'json' &&
-                    getJson()}
-
-                  {activeView ===
-                    'html' &&
-                    getHtml()}
-
-                  {activeView ===
-                    'source' &&
-                    getSource()}
-
-                </pre>
-
-              </div>
-
-
-              {/* FIELDS */}
-
-              <div className="fields-panel">
-
-                <h3>
-                  Detected Fields
-                </h3>
-
-
-                <div className="fields-grid">
-
-                  {activeBlock.fields?.map(
-                    (field) => (
-
-                      <div
-                        className="field-card"
-                        key={field.name}
-                      >
-
-                        <strong>
-                          {field.name}
-                        </strong>
-
-                        <span>
-                          {field.component}
-                        </span>
-
-                      </div>
-
-                    ),
-                  )}
+                  <pre className="code">
+                    <code>
+                      {currentCode}
+                    </code>
+                  </pre>
 
                 </div>
 
-              </div>
 
-            </>
-          )}
+                {/* FIELDS */}
+
+                <div className="fields-panel">
+
+                  <div className="fields-header">
+
+                    <div>
+                      <h3>
+                        Detected Fields
+                      </h3>
+
+                      <p>
+                        Fields detected from
+                        the selected block
+                      </p>
+                    </div>
+
+                    <span className="field-count">
+                      {activeBlock.fields
+                        ?.length || 0}
+                    </span>
+
+                  </div>
+
+
+                  <div className="fields-grid">
+
+                    {activeBlock.fields?.map(
+                      (field) => (
+
+                        <div
+                          className="field-card"
+                          key={
+                            field.name
+                          }
+                        >
+
+                          <div className="field-top">
+
+                            <strong>
+                              {field.name}
+                            </strong>
+
+                            <span>
+                              {field.component}
+                            </span>
+
+                          </div>
+
+                          <small>
+                            {field.label}
+                          </small>
+
+                        </div>
+
+                      ),
+                    )}
+
+                  </div>
+
+                </div>
+
+              </div>
+            )}
 
         </section>
 
@@ -809,34 +754,5 @@ function App() {
     </div>
   );
 }
-
-
-/**
- * Simple HTML formatter.
- *
- * This is only for display/download.
- */
-function formatHtml(html) {
-
-  if (!html) {
-    return '';
-  }
-
-  return html
-    .replace(
-      />\s*</g,
-      '>\n<',
-    )
-    .replace(
-      /<\/div>/g,
-      '</div>\n',
-    )
-    .replace(
-      /\n{3,}/g,
-      '\n\n',
-    )
-    .trim();
-}
-
 
 export default App;
