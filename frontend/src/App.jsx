@@ -1,21 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import './App.css';
 
-const API_URL = 'http://localhost:3002/api/convert';
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'http://localhost:3002/api/convert';
 
 /* =========================
    JSON FORMATTER
 ========================= */
 
 function formatJson(data) {
-  if (!data) {
-    return '';
-  }
-
   try {
     return JSON.stringify(data, null, 2);
   } catch {
-    return String(data);
+    return String(data || '');
   }
 }
 
@@ -28,67 +26,74 @@ function formatHtml(html) {
     return '';
   }
 
-  try {
-    let formatted = html
-      .replace(/>\s+</g, '><')
-      .replace(/></g, '>\n<');
+  const voidTags = new Set([
+    'area',
+    'base',
+    'br',
+    'col',
+    'embed',
+    'hr',
+    'img',
+    'input',
+    'link',
+    'meta',
+    'param',
+    'source',
+    'track',
+    'wbr',
+  ]);
 
-    const lines = formatted.split('\n');
+  const normalized = html
+    .replace(/\r\n/g, '\n')
+    .replace(/\n+/g, '')
+    .replace(/>\s+</g, '><')
+    .replace(/></g, '>\n<');
 
-    let indent = 0;
+  const lines = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
 
-    return lines
-      .map((line) => {
-        const text = line.trim();
+  let indent = 0;
 
-        if (!text) {
-          return '';
-        }
+  return lines
+    .map((line) => {
+      const closingTag = line.match(/^<\/([a-zA-Z][\w-]*)/);
+      const openingTag = line.match(/^<([a-zA-Z][\w-]*)\b/);
 
-        /*
-         * Closing tag reduces indentation
-         */
-        if (/^<\/[^>]+>/.test(text)) {
-          indent = Math.max(0, indent - 1);
-        }
+      const isClosing = Boolean(closingTag);
+      const tagName =
+        closingTag?.[1] ||
+        openingTag?.[1] ||
+        '';
 
-        const result =
-          '  '.repeat(indent) + text;
+      const isSelfClosing =
+        /\/>$/.test(line) ||
+        voidTags.has(tagName.toLowerCase());
 
-        /*
-         * Opening tag increases indentation.
-         */
-        const isOpeningTag =
-          /^<[^/!][^>]*>$/.test(text);
+      if (isClosing) {
+        indent = Math.max(0, indent - 1);
+      }
 
-        const isSelfClosing =
-          /\/>$/.test(text) ||
-          /<(img|source|input|br|hr|meta|link)\b/i.test(
-            text,
-          );
+      const formatted =
+        '  '.repeat(indent) + line;
 
-        const hasClosingTag =
-          /<\/[^>]+>$/.test(text);
+      if (
+        openingTag &&
+        !isClosing &&
+        !isSelfClosing &&
+        !line.includes('</')
+      ) {
+        indent += 1;
+      }
 
-        if (
-          isOpeningTag &&
-          !isSelfClosing &&
-          !hasClosingTag
-        ) {
-          indent += 1;
-        }
-
-        return result;
-      })
-      .filter(Boolean)
-      .join('\n');
-  } catch {
-    return html;
-  }
+      return formatted;
+    })
+    .join('\n');
 }
 
 /* =========================
-   DOWNLOAD
+   FILE DOWNLOAD
 ========================= */
 
 function downloadFile(
@@ -120,7 +125,7 @@ function downloadFile(
 }
 
 /* =========================
-   APP
+   MAIN APP
 ========================= */
 
 function App() {
@@ -130,11 +135,19 @@ function App() {
   const [loading, setLoading] =
     useState(false);
 
-  const [error, setError] =
-    useState('');
+  const [loadingText, setLoadingText] =
+    useState(
+      'Preparing your document...',
+    );
 
   const [result, setResult] =
     useState(null);
+
+  const [error, setError] =
+    useState('');
+
+  const [darkMode, setDarkMode] =
+    useState(false);
 
   const [activeBlock, setActiveBlock] =
     useState(null);
@@ -144,20 +157,6 @@ function App() {
 
   const [copied, setCopied] =
     useState(false);
-
-  /*
-   * Dark mode by default.
-   */
-  const [darkMode, setDarkMode] =
-    useState(true);
-
-  /*
-   * Loader message.
-   */
-  const [loadingText, setLoadingText] =
-    useState(
-      'Preparing document...',
-    );
 
   /* =========================
      LOADER MESSAGES
@@ -172,7 +171,8 @@ function App() {
       'Reading DOCX document...',
       'Extracting document content...',
       'Detecting EDS blocks...',
-      'Generating XWalk fields...',
+      'Generating XWalk configuration...',
+      'Building block models...',
       'Formatting JSON...',
       'Formatting HTML...',
       'Almost ready...',
@@ -191,27 +191,44 @@ function App() {
         setLoadingText(
           messages[index],
         );
-      }, 900);
+      }, 850);
 
     return () =>
       clearInterval(timer);
   }, [loading]);
 
   /* =========================
-     FILE CHANGE
+     FILE SELECT
   ========================= */
 
   function handleFileChange(event) {
-    const selected =
+    const selectedFile =
       event.target.files?.[0];
-
-    setFile(
-      selected || null,
-    );
 
     setError('');
     setResult(null);
     setActiveBlock(null);
+
+    if (!selectedFile) {
+      setFile(null);
+      return;
+    }
+
+    if (
+      !selectedFile.name
+        .toLowerCase()
+        .endsWith('.docx')
+    ) {
+      setFile(null);
+
+      setError(
+        'Please select a DOCX file.',
+      );
+
+      return;
+    }
+
+    setFile(selectedFile);
   }
 
   /* =========================
@@ -220,6 +237,10 @@ function App() {
 
   async function handleConvert() {
     if (!file) {
+      setError(
+        'Please select a DOCX file first.',
+      );
+
       return;
     }
 
@@ -227,6 +248,7 @@ function App() {
     setError('');
     setResult(null);
     setActiveBlock(null);
+    setCopied(false);
 
     try {
       const formData =
@@ -252,26 +274,27 @@ function App() {
       if (!response.ok) {
         throw new Error(
           data?.error ||
-            'Conversion failed',
+            'Conversion failed.',
         );
       }
 
       setResult(data);
 
-      const firstBlock =
-        data?.detectedBlocks?.[0];
+      const blocks =
+        data?.detectedBlocks || [];
 
-      if (firstBlock) {
+      if (blocks.length > 0) {
         setActiveBlock(
-          firstBlock,
+          blocks[0],
         );
 
         setActiveView('json');
       }
     } catch (err) {
       setError(
-        err?.message ||
-          'Something went wrong while converting the document.',
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong while converting the document.',
       );
     } finally {
       setLoading(false);
@@ -279,24 +302,96 @@ function App() {
   }
 
   /* =========================
-     JSON
+     XWALK JSON
   ========================= */
 
   function getJson() {
     if (!activeBlock) {
-      return '';
+      return '{}';
     }
 
-    return formatJson({
-      title:
-        activeBlock.title,
+    const definitions =
+      result?.xwalk?.definitions ||
+      [];
 
-      id:
-        activeBlock.id,
+    const models =
+      result?.xwalk?.models ||
+      [];
 
-      fields:
-        activeBlock.fields || [],
-    });
+    const filters =
+      result?.xwalk?.filters ||
+      [];
+
+    const definition =
+      definitions.find(
+        (item) =>
+          item.id ===
+          activeBlock.id,
+      );
+
+    const model =
+      models.find(
+        (item) =>
+          item.id ===
+          activeBlock.id,
+      );
+
+    /*
+      IMPORTANT:
+      Backend XWalk structure is preserved.
+    */
+
+    const finalDefinition =
+      definition || {
+        title:
+          activeBlock.title,
+        id:
+          activeBlock.id,
+
+        plugins: {
+          xwalk: {
+            page: {
+              resourceType:
+                'core/franklin/components/block/v1/block',
+
+              template: {
+                name:
+                  activeBlock.id,
+
+                model:
+                  activeBlock.id,
+
+                filter:
+                  activeBlock.id,
+              },
+            },
+          },
+        },
+      };
+
+    const finalModel =
+      model || {
+        id:
+          activeBlock.id,
+
+        fields:
+          activeBlock.fields ||
+          [],
+      };
+
+    const json = {
+      definitions: [
+        finalDefinition,
+      ],
+
+      models: [
+        finalModel,
+      ],
+
+      filters,
+    };
+
+    return formatJson(json);
   }
 
   /* =========================
@@ -314,40 +409,137 @@ function App() {
   }
 
   /* =========================
+     CURRENT CODE
+  ========================= */
+
+  const currentCode =
+    useMemo(() => {
+      if (
+        activeView ===
+        'html'
+      ) {
+        return getHtml();
+      }
+
+      return getJson();
+    }, [
+      activeBlock,
+      activeView,
+      result,
+    ]);
+
+  /* =========================
      COPY
   ========================= */
 
-  function copyText(text) {
+  async function copyText(text) {
     if (!text) {
       return;
     }
 
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setCopied(true);
+    try {
+      await navigator.clipboard.writeText(
+        text,
+      );
 
-        setTimeout(() => {
-          setCopied(false);
-        }, 1500);
-      });
+      setCopied(true);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 1500);
+    } catch {
+      setError(
+        'Unable to copy content.',
+      );
+    }
   }
 
   /* =========================
      DOWNLOAD JSON
   ========================= */
 
-  function downloadBlockJson(block) {
-    const content =
-      formatJson({
-        title: block.title,
-        id: block.id,
-        fields:
-          block.fields || [],
-      });
+  function downloadBlockJson(
+    block,
+  ) {
+    if (!block) {
+      return;
+    }
+
+    const definitions =
+      result?.xwalk?.definitions ||
+      [];
+
+    const models =
+      result?.xwalk?.models ||
+      [];
+
+    const filters =
+      result?.xwalk?.filters ||
+      [];
+
+    const definition =
+      definitions.find(
+        (item) =>
+          item.id === block.id,
+      );
+
+    const model =
+      models.find(
+        (item) =>
+          item.id === block.id,
+      );
+
+    const json = {
+      definitions: definition
+        ? [definition]
+        : [
+            {
+              title:
+                block.title,
+
+              id:
+                block.id,
+
+              plugins: {
+                xwalk: {
+                  page: {
+                    resourceType:
+                      'core/franklin/components/block/v1/block',
+
+                    template: {
+                      name:
+                        block.id,
+
+                      model:
+                        block.id,
+
+                      filter:
+                        block.id,
+                    },
+                  },
+                },
+              },
+            },
+          ],
+
+      models: model
+        ? [model]
+        : [
+            {
+              id:
+                block.id,
+
+              fields:
+                block.fields ||
+                [],
+            },
+          ],
+
+      filters,
+    };
 
     downloadFile(
-      content,
+      formatJson(json),
       `${block.id}.json`,
       'application/json',
     );
@@ -357,44 +549,60 @@ function App() {
      DOWNLOAD HTML
   ========================= */
 
-  function downloadBlockHtml(block) {
-    const content =
-      formatHtml(
-        block.html || '',
-      );
+  function downloadBlockHtml(
+    block,
+  ) {
+    if (!block) {
+      return;
+    }
 
     downloadFile(
-      content,
+      formatHtml(
+        block.html || '',
+      ),
       `${block.id}.html`,
       'text/html',
     );
   }
 
   /* =========================
-     CURRENT CODE
+     LINE NUMBERS
   ========================= */
 
-  const currentCode =
-    useMemo(() => {
-      if (!activeBlock) {
-        return '';
-      }
+  function renderCode() {
+    if (!currentCode) {
+      return null;
+    }
 
-      if (
-        activeView ===
-        'json'
-      ) {
-        return getJson();
-      }
+    const lines =
+      currentCode.split('\n');
 
-      return getHtml();
-    }, [
-      activeBlock,
-      activeView,
-    ]);
+    return lines.map(
+      (line, index) => (
+        <div
+          className="code-line"
+          key={index}
+        >
+          <span className="line-number">
+            {index + 1}
+          </span>
+
+          <span
+            className={
+              activeView === 'json'
+                ? 'line-content json-code'
+                : 'line-content html-code'
+            }
+          >
+            {line || ' '}
+          </span>
+        </div>
+      ),
+    );
+  }
 
   /* =========================
-     UI
+     RENDER
   ========================= */
 
   return (
@@ -406,13 +614,11 @@ function App() {
       }
     >
       {/* =========================
-          TOP BAR
+          TOPBAR
       ========================= */}
 
       <header className="topbar">
-
         <div className="brand">
-
           <div className="brand-icon">
             E
           </div>
@@ -426,41 +632,34 @@ function App() {
               DOCX → EDS HTML + XWalk
             </p>
           </div>
-
         </div>
 
         <button
           className="theme-button"
           onClick={() =>
             setDarkMode(
-              (value) => !value,
+              (value) =>
+                !value,
             )
           }
         >
           {darkMode
             ? '☀ Light'
-            : '☾ Dark'}
+            : '◐ Dark'}
         </button>
-
       </header>
-
 
       {/* =========================
           WORKSPACE
       ========================= */}
 
       <main className="workspace">
-
         {/* =========================
             SIDEBAR
         ========================= */}
 
         <aside className="sidebar">
-
-          {/* UPLOAD */}
-
           <div className="upload-box">
-
             <div className="upload-icon">
               ↑
             </div>
@@ -475,8 +674,9 @@ function App() {
             </p>
 
             <label className="upload-button">
-
-              Choose DOCX
+              <span>
+                Choose DOCX
+              </span>
 
               <input
                 type="file"
@@ -485,20 +685,17 @@ function App() {
                   handleFileChange
                 }
               />
-
             </label>
 
             {file && (
               <div className="file-name">
-
-                <span>
-                  📄
+                <span className="file-icon">
+                  DOCX
                 </span>
 
-                <span>
+                <span className="file-text">
                   {file.name}
                 </span>
-
               </div>
             )}
 
@@ -522,9 +719,7 @@ function App() {
                 {error}
               </div>
             )}
-
           </div>
-
 
           {/* =========================
               BLOCK LIST
@@ -532,99 +727,90 @@ function App() {
 
           {result && (
             <div className="block-list">
-
               <div className="section-title">
-
                 <span>
                   Detected Blocks
                 </span>
 
                 <span className="count">
-                  {result.detectedBlocks
-                    ?.length || 0}
+                  {result
+                    .detectedBlocks
+                    ?.length ||
+                    0}
                 </span>
-
               </div>
 
-              {result.detectedBlocks?.map(
-                (block) => (
+              <div className="blocks-wrapper">
+                {result.detectedBlocks?.map(
+                  (block) => (
+                    <button
+                      key={block.id}
+                      className={
+                        activeBlock?.id ===
+                        block.id
+                          ? 'block-item active'
+                          : 'block-item'
+                      }
+                      onClick={() => {
+                        setActiveBlock(
+                          block,
+                        );
 
-                  <button
-                    key={block.id}
-                    className={
-                      activeBlock?.id ===
-                      block.id
-                        ? 'block-item active'
-                        : 'block-item'
-                    }
-                    onClick={() => {
+                        setActiveView(
+                          'json',
+                        );
 
-                      setActiveBlock(
-                        block,
-                      );
+                        setCopied(
+                          false,
+                        );
+                      }}
+                    >
+                      <span className="block-symbol">
+                        ▦
+                      </span>
 
-                      setActiveView(
-                        'json',
-                      );
+                      <span className="block-info">
+                        <strong>
+                          {block.title}
+                        </strong>
 
-                    }}
-                  >
+                        <small>
+                          {block.id}
+                        </small>
+                      </span>
 
-                    <span className="block-symbol">
-                      ▦
-                    </span>
-
-                    <span className="block-info">
-
-                      <strong>
-                        {block.title}
-                      </strong>
-
-                      <small>
-                        {block.id}
-                      </small>
-
-                    </span>
-
-                  </button>
-
-                ),
-              )}
-
+                      <span className="block-arrow">
+                        →
+                      </span>
+                    </button>
+                  ),
+                )}
+              </div>
             </div>
           )}
-
         </aside>
-
 
         {/* =========================
             CONTENT
         ========================= */}
 
         <section className="content">
-
           {/* =========================
-              LOADER
+              LOADING
           ========================= */}
 
           {loading && (
-
             <div className="loading-screen">
-
               <div className="loader-card">
-
-                <div className="loader-logo">
-                  E
-                </div>
-
-                <div className="dot-loader">
-
+                <div className="loader-dots">
                   <span></span>
                   <span></span>
                   <span></span>
                   <span></span>
                   <span></span>
-
+                  <span></span>
+                  <span></span>
+                  <span></span>
                 </div>
 
                 <h2>
@@ -635,23 +821,16 @@ function App() {
                   {loadingText}
                 </p>
 
-                <div className="loader-track">
-
-                  <div className="loader-progress"></div>
-
+                <div className="loading-line">
+                  <span></span>
                 </div>
 
-                <span className="loader-hint">
-                  Generating your EDS
-                  blocks...
-                </span>
-
+                <small>
+                  Generating your EDS blocks
+                </small>
               </div>
-
             </div>
-
           )}
-
 
           {/* =========================
               EMPTY
@@ -659,11 +838,11 @@ function App() {
 
           {!result &&
             !loading && (
-
               <div className="empty-state">
-
                 <div className="empty-icon">
-                  ◇
+                  <span>
+                    E
+                  </span>
                 </div>
 
                 <h2>
@@ -675,11 +854,8 @@ function App() {
                   XWalk JSON and HTML
                   will appear here.
                 </p>
-
               </div>
-
             )}
-
 
           {/* =========================
               RESULT
@@ -688,20 +864,14 @@ function App() {
           {result &&
             activeBlock &&
             !loading && (
-
               <div className="result-view">
-
-                {/* =========================
-                    BLOCK HEADER
-                ========================= */}
+                {/* HEADER */}
 
                 <div className="content-header">
-
                   <div className="block-heading">
-
-                    <span className="block-name-label">
-                      Block Name
-                    </span>
+                    <div className="block-label">
+                      BLOCK NAME
+                    </div>
 
                     <h2>
                       {activeBlock.title}
@@ -710,12 +880,9 @@ function App() {
                     <span className="id-badge">
                       {activeBlock.id}
                     </span>
-
                   </div>
 
-
                   <div className="block-actions">
-
                     <button
                       onClick={() =>
                         downloadBlockJson(
@@ -723,7 +890,10 @@ function App() {
                         )
                       }
                     >
-                      ↓ JSON
+                      <span>
+                        ↓
+                      </span>
+                      JSON
                     </button>
 
                     <button
@@ -733,20 +903,17 @@ function App() {
                         )
                       }
                     >
-                      ↓ HTML
+                      <span>
+                        ↓
+                      </span>
+                      HTML
                     </button>
-
                   </div>
-
                 </div>
 
-
-                {/* =========================
-                    TABS
-                ========================= */}
+                {/* TABS */}
 
                 <div className="tabs">
-
                   <button
                     className={
                       activeView ===
@@ -754,12 +921,19 @@ function App() {
                         ? 'active'
                         : ''
                     }
-                    onClick={() =>
+                    onClick={() => {
                       setActiveView(
                         'json',
-                      )
-                    }
+                      );
+
+                      setCopied(
+                        false,
+                      );
+                    }}
                   >
+                    <span className="tab-icon">
+                      {}
+                    </span>
                     JSON
                   </button>
 
@@ -770,40 +944,58 @@ function App() {
                         ? 'active'
                         : ''
                     }
-                    onClick={() =>
+                    onClick={() => {
                       setActiveView(
                         'html',
-                      )
-                    }
+                      );
+
+                      setCopied(
+                        false,
+                      );
+                    }}
                   >
+                    <span className="tab-icon">
+                      {'</>'}
+                    </span>
                     HTML
                   </button>
-
                 </div>
 
+                {/* CODE EDITOR */}
 
-                {/* =========================
-                    CODE VIEW
-                ========================= */}
-
-                <div className="code-card">
-
+                <div
+                  className={
+                    activeView ===
+                    'json'
+                      ? 'code-card json-editor'
+                      : 'code-card html-editor'
+                  }
+                >
                   <div className="code-toolbar">
-
-                    <div className="file-label">
-
-                      <span className="file-dot">
-                        ●
+                    <div className="code-file-info">
+                      <span className="window-dots">
+                        <i></i>
+                        <i></i>
+                        <i></i>
                       </span>
 
-                      {activeView ===
+                      <span className="file-type">
+                        {activeView ===
                         'json'
-                        ? `${activeBlock.id}.json`
-                        : `${activeBlock.id}.html`}
+                          ? 'JSON'
+                          : 'HTML'}
+                      </span>
 
+                      <span className="file-name-code">
+                        {activeView ===
+                        'json'
+                          ? `${activeBlock.id}.json`
+                          : `${activeBlock.id}.html`}
+                      </span>
                     </div>
 
                     <button
+                      className="copy-button"
                       onClick={() =>
                         copyText(
                           currentCode,
@@ -814,94 +1006,75 @@ function App() {
                         ? '✓ Copied'
                         : 'Copy'}
                     </button>
-
                   </div>
 
-
-                  <pre className="code">
-                    <code>
-                      {currentCode}
-                    </code>
-                  </pre>
-
+                  <div className="code-editor">
+                    <pre className="code">
+                      {renderCode()}
+                    </pre>
+                  </div>
                 </div>
 
-
-                {/* =========================
-                    FIELDS
-                ========================= */}
+                {/* FIELDS */}
 
                 <div className="fields-panel">
-
                   <div className="fields-header">
-
                     <div>
-
                       <h3>
                         Detected Fields
                       </h3>
 
                       <p>
-                        Fields detected
-                        from the selected
-                        block
+                        Fields detected from
+                        the selected block
                       </p>
-
                     </div>
 
                     <span className="field-count">
-                      {activeBlock.fields
-                        ?.length || 0}
+                      {activeBlock
+                        .fields
+                        ?.length ||
+                        0}
                     </span>
-
                   </div>
 
-
                   <div className="fields-grid">
-
                     {activeBlock.fields?.map(
                       (field) => (
-
                         <div
                           className="field-card"
                           key={
                             field.name
                           }
                         >
-
                           <div className="field-top">
-
                             <strong>
-                              {field.name}
+                              {
+                                field.name
+                              }
                             </strong>
 
                             <span>
-                              {field.component}
+                              {
+                                field.component
+                              }
                             </span>
-
                           </div>
 
                           <small>
-                            {field.label}
+                            {
+                              field.label
+                            }
                           </small>
-
                         </div>
-
                       ),
                     )}
-
                   </div>
-
                 </div>
-
               </div>
-
             )}
-
         </section>
-
       </main>
-
     </div>
   );
 }
