@@ -1,3 +1,12 @@
+/**
+ * Convert block title to XWalk ID.
+ *
+ * Abhay
+ * -> abhay
+ *
+ * My Banner
+ * -> my-banner
+ */
 function createId(value) {
     return value
         .trim()
@@ -5,53 +14,19 @@ function createId(value) {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 }
-function detectFieldTypes(html) {
-    const fields = [];
-    const hasImage = /\[IMAGE\]/i.test(html);
-    const hasLink = /<a\b[^>]*>/i.test(html);
-    const hasList = /<(ul|ol)\b/i.test(html);
-    const paragraphs = [
-        ...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi),
-    ].map((match) => match[1]
-        .replace(/<[^>]+>/g, '')
-        .trim());
-    const hasTitle = paragraphs.some((text) => text.length > 0);
-    if (hasTitle) {
-        fields.push({
-            component: 'text',
-            name: 'title',
-            label: 'Title',
-        });
-    }
-    if (paragraphs.length > 1 || hasList) {
-        fields.push({
-            component: 'richtext',
-            name: 'description',
-            label: 'Description',
-        });
-    }
-    if (hasImage) {
-        fields.push({
-            component: 'reference',
-            name: 'image',
-            label: 'Image',
-        });
-    }
-    if (hasLink) {
-        fields.push({
-            component: 'text',
-            name: 'link',
-            label: 'Link',
-        });
-    }
-    return fields;
-}
+/**
+ * Generate XWalk configuration.
+ */
 export function generateXwalkConfig(blocks) {
     const definitions = [];
     const models = [];
     const filters = [];
     for (const block of blocks) {
-        const blockId = createId(block.id || block.title);
+        const blockId = createId(block.id ||
+            block.title);
+        /**
+         * Block definition.
+         */
         definitions.push({
             title: block.title,
             id: blockId,
@@ -68,6 +43,9 @@ export function generateXwalkConfig(blocks) {
                 },
             },
         });
+        /**
+         * Block model.
+         */
         models.push({
             id: blockId,
             fields: [
@@ -97,4 +75,4 @@ export function generateXwalkConfig(blocks) {
         filters,
     };
 }
-export { createId, detectFieldTypes, };
+export { createId, };
