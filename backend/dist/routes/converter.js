@@ -1,16 +1,13 @@
 import mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
-import { convertToEdsHtml } from '../services/converter.js';
+import { convertToEdsHtml, } from '../services/converter.js';
 import { generateXwalkConfig, createId, } from '../services/xwalk.js';
 /**
- * Detect whether the document/block explicitly contains
- * column prefixes such as:
+ * Detect explicit column prefix.
  *
  * col1_
  * col2_
  * col3_
- *
- * We DO NOT create these prefixes automatically.
  */
 function detectColumnPrefix(blockHtml) {
     const match = blockHtml.match(/\b(col\d+_)/i);
@@ -20,20 +17,8 @@ function detectColumnPrefix(blockHtml) {
     return match[1].toLowerCase();
 }
 /**
- * Add a column prefix only when it actually exists
- * in the DOCX content.
- *
- * Example:
- *
- * col1_ + image
- * => col1_image
- *
- * col2_ + description
- * => col2_description
- *
- * No prefix:
- * => image
- * => description
+ * Add prefix only when it exists
+ * in the original document.
  */
 function withColumnPrefix(name, prefix) {
     if (!prefix) {
@@ -42,26 +27,19 @@ function withColumnPrefix(name, prefix) {
     return `${prefix}${name}`;
 }
 /**
- * Detect fields from block HTML.
+ * Detect XWalk fields.
  */
 function detectFields(blockHtml) {
     const fields = [];
     const $ = cheerio.load(blockHtml);
     const hasHeading = $('h1, h2, h3, h4, h5, h6').length > 0;
     const hasParagraph = $('p').length > 0;
-    const hasImage = blockHtml.includes('[IMAGE]');
+    const hasImage = blockHtml.includes('[IMAGE');
     const hasLink = $('a').length > 0;
     const hasList = $('ul, ol').length > 0;
-    /**
-     * Detect explicit column prefix.
-     *
-     * Example:
-     * col1_
-     * col2_
-     */
     const columnPrefix = detectColumnPrefix(blockHtml);
     /**
-     * Title
+     * Title.
      */
     if (hasHeading) {
         fields.push({
@@ -71,7 +49,7 @@ function detectFields(blockHtml) {
         });
     }
     /**
-     * Description
+     * Description.
      */
     if (hasParagraph || hasList) {
         fields.push({
@@ -81,7 +59,7 @@ function detectFields(blockHtml) {
         });
     }
     /**
-     * Image
+     * Image.
      */
     if (hasImage) {
         fields.push({
@@ -93,7 +71,7 @@ function detectFields(blockHtml) {
         });
     }
     /**
-     * Link
+     * Link.
      */
     if (hasLink) {
         fields.push({
@@ -105,17 +83,19 @@ function detectFields(blockHtml) {
     return fields;
 }
 /**
- * Get block name dynamically.
+ * Get block title from first row.
  *
  * Example:
  *
  * <div class="cards">
  *   <div>
- *     <div><p>Hero</p></div>
+ *     <div>
+ *       <p>Hero</p>
+ *     </div>
  *   </div>
  * </div>
  *
- * Returns:
+ * returns:
  *
  * Hero
  */
@@ -124,66 +104,64 @@ function getBlockTitle(block) {
     if (!firstRow.length) {
         return '';
     }
-    /**
-     * First try text from the first row.
-     */
-    const title = firstRow
+    const firstText = firstRow
+        .find('p, h1, h2, h3, h4, h5, h6')
+        .first()
         .text()
-        .replace(/\[IMAGE\]/gi, '')
+        .replace(/\[IMAGE(?::[^\]]+)?\]/gi, '')
         .replace(/\s+/g, ' ')
         .trim();
-    if (title) {
-        return title;
+    if (firstText) {
+        return firstText;
     }
-    /**
-     * Fallback to heading.
-     */
-    const heading = firstRow
-        .find('h1, h2, h3, h4, h5, h6')
-        .first();
-    if (heading.length) {
-        return heading
-            .text()
-            .replace(/\s+/g, ' ')
-            .trim();
-    }
-    return '';
+    return firstRow
+        .text()
+        .replace(/\[IMAGE(?::[^\]]+)?\]/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 /**
- * Detect blocks automatically.
+ * Replace temporary cards class.
+ */
+function replaceBlockClass(html, id) {
+    return html.replace(/class=["']cards["']/i, `class="${id} block"`);
+}
+/**
+ * Add EDS-style wrapper.
  *
- * No block names are hardcoded.
+ * Example:
  *
- * Hero
- *   -> hero
- *
- * Columns
- *   -> columns
- *
- * Abhay
- *   -> abhay
- *
- * My Banner
- *   -> my-banner
+ * <div class="hero-wrapper">
+ *   <div class="hero block">
+ *     ...
+ *   </div>
+ * </div>
+ */
+function createEdsBlockHtml(originalHtml, id) {
+    const blockHtml = replaceBlockClass(originalHtml, id);
+    return [
+        `<div class="${id}-wrapper">`,
+        blockHtml,
+        '</div>',
+    ].join('\n');
+}
+/**
+ * Detect blocks.
  */
 function detectBlocks(html) {
     const blocks = [];
     const $ = cheerio.load(html);
-    /**
-     * Every .cards container is
-     * treated as a block candidate.
-     */
     $('.cards').each((index, element) => {
         const block = $(element);
         /**
          * Ignore metadata.
          */
         if (block.hasClass('metadata') ||
-            block.find('.metadata').length) {
+            block.find('.metadata').length > 0) {
             return;
         }
         /**
-         * Get block title.
+         * Get title.
          */
         const title = getBlockTitle(block);
         if (!title) {
@@ -191,36 +169,32 @@ function detectBlocks(html) {
         }
         /**
          * Generate ID.
-         *
-         * Display title:
-         * Abhay
-         *
-         * ID:
-         * abhay
          */
         const id = createId(title) ||
             `block-${index + 1}`;
         /**
-         * Get complete block HTML.
+         * Original block HTML.
          */
-        const blockHtml = $.html(block);
+        const originalHtml = $.html(block);
         /**
-         * Detect fields.
+         * Fields.
          */
-        const fields = detectFields(blockHtml);
+        const fields = detectFields(originalHtml);
+        /**
+         * Final EDS HTML.
+         */
+        const finalHtml = createEdsBlockHtml(originalHtml, id);
         blocks.push({
             title,
             id,
             fields,
+            html: finalHtml,
         });
     });
     /**
-     * Fallback:
-     *
-     * If no .cards blocks exist,
-     * create one generic block.
+     * Generic fallback.
      */
-    if (!blocks.length &&
+    if (blocks.length === 0 &&
         html.trim()) {
         const title = $('h1, h2, h3, h4, h5, h6')
             .first()
@@ -234,18 +208,19 @@ function detectBlocks(html) {
             title,
             id,
             fields: detectFields(html),
+            html,
         });
     }
     return blocks;
 }
 /**
- * Converter route.
+ * Convert DOCX to EDS.
  */
 export async function converterRoutes(app) {
     app.post('/convert', async (request, reply) => {
         try {
             /**
-             * Get uploaded DOCX.
+             * Upload DOCX.
              */
             const file = await request.file();
             if (!file) {
@@ -258,8 +233,7 @@ export async function converterRoutes(app) {
             /**
              * Validate extension.
              */
-            const filename = file.filename
-                .toLowerCase();
+            const filename = file.filename.toLowerCase();
             if (!filename.endsWith('.docx')) {
                 return reply
                     .code(400)
@@ -273,12 +247,18 @@ export async function converterRoutes(app) {
             const buffer = await file.toBuffer();
             /**
              * DOCX -> HTML.
+             *
+             * IMPORTANT:
+             * Do NOT use convertImage here.
+             *
+             * We don't want base64 images.
              */
             const result = await mammoth.convertToHtml({
                 buffer,
             });
             /**
-             * HTML -> EDS HTML.
+             * Convert Mammoth HTML
+             * into EDS table/block HTML.
              */
             const edsHtml = convertToEdsHtml(result.value);
             /**
@@ -286,18 +266,48 @@ export async function converterRoutes(app) {
              */
             const blocks = detectBlocks(edsHtml);
             /**
-             * Generate XWalk config.
+             * Generate XWalk.
              */
             const xwalk = generateXwalkConfig(blocks);
             /**
-             * Return conversion result.
+             * Individual files.
+             */
+            const blockFiles = blocks.map((block) => ({
+                name: block.id,
+                jsonFile: `${block.id}.json`,
+                htmlFile: `${block.id}.html`,
+                json: {
+                    title: block.title,
+                    id: block.id,
+                    fields: block.fields,
+                },
+                html: block.html || '',
+            }));
+            /**
+             * Return response.
              */
             return {
                 success: true,
                 filename: file.filename,
+                /**
+                 * Complete EDS HTML.
+                 */
                 html: edsHtml,
+                /**
+                 * Detected blocks.
+                 */
                 detectedBlocks: blocks,
+                /**
+                 * Individual block files.
+                 */
+                blockFiles,
+                /**
+                 * XWalk config.
+                 */
                 xwalk,
+                /**
+                 * Mammoth messages.
+                 */
                 messages: result.messages,
             };
         }

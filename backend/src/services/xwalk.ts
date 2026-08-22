@@ -12,24 +12,15 @@ export interface DetectedBlock {
   title: string;
   id: string;
   fields: XwalkField[];
+  html?: string;
 }
 
 export interface XwalkConfig {
   definitions: unknown[];
   models: unknown[];
-  filters: unknown[];
 }
 
-/**
- * Convert block title to XWalk ID.
- *
- * Abhay
- * -> abhay
- *
- * My Banner
- * -> my-banner
- */
-function createId(
+export function createId(
   value: string,
 ): string {
   return value
@@ -41,35 +32,29 @@ function createId(
     )
     .replace(
       /^-+|-+$/g,
-      '');
+      '',
+    );
 }
 
-/**
- * Generate XWalk configuration.
- */
 export function generateXwalkConfig(
   blocks: DetectedBlock[],
 ): XwalkConfig {
   const definitions: unknown[] = [];
   const models: unknown[] = [];
-  const filters: unknown[] = [];
 
-  for (
-    const block of blocks
-  ) {
+  for (const block of blocks) {
     const blockId =
       createId(
         block.id ||
         block.title,
       );
 
-    /**
-     * Block definition.
-     */
     definitions.push({
-      title: block.title,
+      title:
+        block.title,
 
-      id: blockId,
+      id:
+        blockId,
 
       plugins: {
         xwalk: {
@@ -78,20 +63,23 @@ export function generateXwalkConfig(
               'core/franklin/components/block/v1/block',
 
             template: {
-              name: block.title,
-              model: blockId,
-              filter: blockId,
+              name:
+                block.title,
+
+              model:
+                blockId,
+
+              filter:
+                blockId,
             },
           },
         },
       },
     });
 
-    /**
-     * Block model.
-     */
     models.push({
-      id: blockId,
+      id:
+        blockId,
 
       fields: [
         {
@@ -130,10 +118,5 @@ export function generateXwalkConfig(
   return {
     definitions,
     models,
-    filters,
   };
 }
-
-export {
-  createId,
-};

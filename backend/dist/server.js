@@ -1,26 +1,35 @@
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
-import { converterRoutes } from './routes/converter.js';
+import { converterRoutes, } from './routes/converter.js';
 const app = Fastify({
     logger: true,
 });
-// Register multipart plugin
+/**
+ * Multipart plugin.
+ */
 await app.register(multipart, {
     limits: {
-        fileSize: 20 * 1024 * 1024, // 20 MB
+        fileSize: 20 * 1024 * 1024,
     },
 });
-// Health check
+/**
+ * Health check.
+ */
 app.get('/api/health', async () => {
     return {
         status: 'ok',
         message: 'EDS Block Converter API is running',
     };
 });
-// Register converter routes
+/**
+ * Converter routes.
+ */
 await app.register(converterRoutes, {
     prefix: '/api',
 });
+/**
+ * Start server.
+ */
 const start = async () => {
     try {
         await app.listen({

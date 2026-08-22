@@ -1,32 +1,16 @@
-/**
- * Convert block title to XWalk ID.
- *
- * Abhay
- * -> abhay
- *
- * My Banner
- * -> my-banner
- */
-function createId(value) {
+export function createId(value) {
     return value
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 }
-/**
- * Generate XWalk configuration.
- */
 export function generateXwalkConfig(blocks) {
     const definitions = [];
     const models = [];
-    const filters = [];
     for (const block of blocks) {
         const blockId = createId(block.id ||
             block.title);
-        /**
-         * Block definition.
-         */
         definitions.push({
             title: block.title,
             id: blockId,
@@ -43,9 +27,6 @@ export function generateXwalkConfig(blocks) {
                 },
             },
         });
-        /**
-         * Block model.
-         */
         models.push({
             id: blockId,
             fields: [
@@ -72,7 +53,5 @@ export function generateXwalkConfig(blocks) {
     return {
         definitions,
         models,
-        filters,
     };
 }
-export { createId, };

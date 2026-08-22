@@ -1,21 +1,35 @@
 import * as cheerio from 'cheerio';
 import type { Element } from 'domhandler';
 
-export function convertToEdsHtml(
-  html: string,
-): string {
+/**
+ * Convert Mammoth HTML into EDS-style block HTML.
+ *
+ * Tables are converted into:
+ *
+ * <div class="cards">
+ *   <div>
+ *     <div>...</div>
+ *     <div>...</div>
+ *   </div>
+ * </div>
+ *
+ * The temporary "cards" class is replaced later
+ * by the detected block name.
+ */
+export function convertToEdsHtml(html: string): string {
   const $ = cheerio.load(html);
 
   $('table').each((_, table) => {
-    const converted =
-      convertTableToBlock($, table);
-
+    const converted = convertTableToBlock($, table);
     $(table).replaceWith(converted);
   });
 
   return $('body').html() || '';
 }
 
+/**
+ * Convert a table into an EDS block.
+ */
 function convertTableToBlock(
   $: cheerio.CheerioAPI,
   table: Element,
@@ -29,15 +43,12 @@ function convertTableToBlock(
   }
 
   /**
-   * Metadata table
+   * Metadata table should not become a block.
    */
   if (isMetadataTable($, rows)) {
     return convertMetadataTable($, rows);
   }
 
-  /**
-   * Convert table rows into EDS block rows.
-   */
   const blockRows = rows
     .map((row) => {
       const cells = $(row)
@@ -57,9 +68,9 @@ function convertTableToBlock(
 
           return `<div>${content}</div>`;
         })
-        .join('\n  ');
+        .join('\n    ');
 
-      return `<div>\n  ${cellHtml}\n</div>`;
+      return `<div>\n    ${cellHtml}\n  </div>`;
     })
     .filter(Boolean);
 
@@ -74,6 +85,9 @@ function convertTableToBlock(
   ].join('\n');
 }
 
+/**
+ * Detect metadata tables.
+ */
 function isMetadataTable(
   $: cheerio.CheerioAPI,
   rows: Element[],
@@ -93,6 +107,9 @@ function isMetadataTable(
   );
 }
 
+/**
+ * Convert metadata table.
+ */
 function convertMetadataTable(
   $: cheerio.CheerioAPI,
   rows: Element[],
@@ -121,13 +138,11 @@ function convertMetadataTable(
     if (
       key &&
       value &&
-      key.toLowerCase() !==
-        'section metadata' &&
-      key.toLowerCase() !==
-        'metadata'
+      key.toLowerCase() !== 'section metadata' &&
+      key.toLowerCase() !== 'metadata'
     ) {
       values.push(
-        `<div>${escapeHtml(key)}</div>` +
+        `<div>${escapeHtml(key)}</div>`,
         `<div>${escapeHtml(value)}</div>`,
       );
     }
@@ -144,6 +159,20 @@ function convertMetadataTable(
   ].join('\n');
 }
 
+/**
+ * Clean a table cell.
+ *
+ * IMPORTANT:
+ * We intentionally DO NOT keep base64 image data.
+ *
+ * DOCX image:
+ *
+ * <img src="data:image/jpeg;base64,...">
+ *
+ * becomes:
+ *
+ * [IMAGE]
+ */
 function cleanCell(
   $: cheerio.CheerioAPI,
   cell: string,
@@ -151,12 +180,23 @@ function cleanCell(
   const $cell = cheerio.load(cell);
 
   /**
-   * Convert images to marker.
+   * Remove base64 image.
+   *
+   * We keep an EDS-friendly marker instead.
    */
   $cell('img').each((_, img) => {
-    $cell(img).replaceWith(
-      '[IMAGE]',
-    );
+    const alt =
+      $cell(img)
+        .attr('alt')
+        ?.trim() || '';
+
+    if (alt) {
+      $cell(img).replaceWith(
+        `[IMAGE:${escapeText(alt)}]`,
+      );
+    } else {
+      $cell(img).replaceWith('[IMAGE]');
+    }
   });
 
   /**
@@ -170,10 +210,24 @@ function cleanCell(
         .length > 0;
 
     const hasImage =
-      $cell(p).find('img').length > 0;
+      $cell(p).text().includes('[IMAGE]');
 
     if (!hasText && !hasImage) {
       $cell(p).remove();
+    }
+  });
+
+  /**
+   * Remove empty divs.
+   */
+  $cell('div').each((_, div) => {
+    const text =
+      $cell(div)
+        .text()
+        .trim();
+
+    if (!text && !$cell(div).find('img').length) {
+      $cell(div).remove();
     }
   });
 
@@ -182,19 +236,23 @@ function cleanCell(
   );
 }
 
-function escapeHtml(
-  value: string,
-): string {
+/**
+ * Escape HTML.
+ */
+function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(
-      /"/g,
-      '&quot;',
-    )
-    .replace(
-      /'/g,
-      '&#039;',
-    );
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Escape simple text used inside image markers.
+ */
+function escapeText(value: string): string {
+  return value
+    .replace(/[\[\]]/g, '')
+    .trim();
 }

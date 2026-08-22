@@ -1,4 +1,19 @@
 import * as cheerio from 'cheerio';
+/**
+ * Convert Mammoth HTML into EDS-style block HTML.
+ *
+ * Tables are converted into:
+ *
+ * <div class="cards">
+ *   <div>
+ *     <div>...</div>
+ *     <div>...</div>
+ *   </div>
+ * </div>
+ *
+ * The temporary "cards" class is replaced later
+ * by the detected block name.
+ */
 export function convertToEdsHtml(html) {
     const $ = cheerio.load(html);
     $('table').each((_, table) => {
@@ -7,6 +22,9 @@ export function convertToEdsHtml(html) {
     });
     return $('body').html() || '';
 }
+/**
+ * Convert a table into an EDS block.
+ */
 function convertTableToBlock($, table) {
     const rows = $(table)
         .find('tr')
@@ -15,14 +33,11 @@ function convertTableToBlock($, table) {
         return $(table).toString();
     }
     /**
-     * Metadata table
+     * Metadata table should not become a block.
      */
     if (isMetadataTable($, rows)) {
         return convertMetadataTable($, rows);
     }
-    /**
-     * Convert table rows into EDS block rows.
-     */
     const blockRows = rows
         .map((row) => {
         const cells = $(row)
@@ -36,8 +51,8 @@ function convertTableToBlock($, table) {
             const content = cleanCell($, $(cell).html() || '');
             return `<div>${content}</div>`;
         })
-            .join('\n  ');
-        return `<div>\n  ${cellHtml}\n</div>`;
+            .join('\n    ');
+        return `<div>\n    ${cellHtml}\n  </div>`;
     })
         .filter(Boolean);
     if (!blockRows.length) {
@@ -49,6 +64,9 @@ function convertTableToBlock($, table) {
         '</div>',
     ].join('\n');
 }
+/**
+ * Detect metadata tables.
+ */
 function isMetadataTable($, rows) {
     const text = rows
         .slice(0, 2)
@@ -61,6 +79,9 @@ function isMetadataTable($, rows) {
         text === 'metadata' ||
         text.startsWith('metadata '));
 }
+/**
+ * Convert metadata table.
+ */
 function convertMetadataTable($, rows) {
     const values = [];
     for (const row of rows) {
@@ -80,12 +101,9 @@ function convertMetadataTable($, rows) {
             .trim();
         if (key &&
             value &&
-            key.toLowerCase() !==
-                'section metadata' &&
-            key.toLowerCase() !==
-                'metadata') {
-            values.push(`<div>${escapeHtml(key)}</div>` +
-                `<div>${escapeHtml(value)}</div>`);
+            key.toLowerCase() !== 'section metadata' &&
+            key.toLowerCase() !== 'metadata') {
+            values.push(`<div>${escapeHtml(key)}</div>`, `<div>${escapeHtml(value)}</div>`);
         }
     }
     if (!values.length) {
@@ -97,13 +115,37 @@ function convertMetadataTable($, rows) {
         '</div>',
     ].join('\n');
 }
+/**
+ * Clean a table cell.
+ *
+ * IMPORTANT:
+ * We intentionally DO NOT keep base64 image data.
+ *
+ * DOCX image:
+ *
+ * <img src="data:image/jpeg;base64,...">
+ *
+ * becomes:
+ *
+ * [IMAGE]
+ */
 function cleanCell($, cell) {
     const $cell = cheerio.load(cell);
     /**
-     * Convert images to marker.
+     * Remove base64 image.
+     *
+     * We keep an EDS-friendly marker instead.
      */
     $cell('img').each((_, img) => {
-        $cell(img).replaceWith('[IMAGE]');
+        const alt = $cell(img)
+            .attr('alt')
+            ?.trim() || '';
+        if (alt) {
+            $cell(img).replaceWith(`[IMAGE:${escapeText(alt)}]`);
+        }
+        else {
+            $cell(img).replaceWith('[IMAGE]');
+        }
     });
     /**
      * Remove empty paragraphs.
@@ -113,13 +155,27 @@ function cleanCell($, cell) {
             .text()
             .trim()
             .length > 0;
-        const hasImage = $cell(p).find('img').length > 0;
+        const hasImage = $cell(p).text().includes('[IMAGE]');
         if (!hasText && !hasImage) {
             $cell(p).remove();
         }
     });
+    /**
+     * Remove empty divs.
+     */
+    $cell('div').each((_, div) => {
+        const text = $cell(div)
+            .text()
+            .trim();
+        if (!text && !$cell(div).find('img').length) {
+            $cell(div).remove();
+        }
+    });
     return ($cell.root().html()?.trim() || '');
 }
+/**
+ * Escape HTML.
+ */
 function escapeHtml(value) {
     return value
         .replace(/&/g, '&amp;')
@@ -127,4 +183,12 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+/**
+ * Escape simple text used inside image markers.
+ */
+function escapeText(value) {
+    return value
+        .replace(/[\[\]]/g, '')
+        .trim();
 }
