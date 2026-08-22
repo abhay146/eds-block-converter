@@ -20,70 +20,33 @@ export interface XwalkConfig {
   filters: unknown[];
 }
 
-function createId(value: string): string {
+/**
+ * Convert block title to XWalk ID.
+ *
+ * Abhay
+ * -> abhay
+ *
+ * My Banner
+ * -> my-banner
+ */
+function createId(
+  value: string,
+): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(
+      /[^a-z0-9]+/g,
+      '-',
+    )
+    .replace(
+      /^-+|-+$/g,
+      '');
 }
 
-function detectFieldTypes(
-  html: string,
-): XwalkField[] {
-  const fields: XwalkField[] = [];
-
-  const hasImage = /\[IMAGE\]/i.test(html);
-  const hasLink = /<a\b[^>]*>/i.test(html);
-  const hasList = /<(ul|ol)\b/i.test(html);
-
-  const paragraphs = [
-    ...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi),
-  ].map((match) =>
-    match[1]
-      .replace(/<[^>]+>/g, '')
-      .trim(),
-  );
-
-  const hasTitle = paragraphs.some(
-    (text) => text.length > 0,
-  );
-
-  if (hasTitle) {
-    fields.push({
-      component: 'text',
-      name: 'title',
-      label: 'Title',
-    });
-  }
-
-  if (paragraphs.length > 1 || hasList) {
-    fields.push({
-      component: 'richtext',
-      name: 'description',
-      label: 'Description',
-    });
-  }
-
-  if (hasImage) {
-    fields.push({
-      component: 'reference',
-      name: 'image',
-      label: 'Image',
-    });
-  }
-
-  if (hasLink) {
-    fields.push({
-      component: 'text',
-      name: 'link',
-      label: 'Link',
-    });
-  }
-
-  return fields;
-}
-
+/**
+ * Generate XWalk configuration.
+ */
 export function generateXwalkConfig(
   blocks: DetectedBlock[],
 ): XwalkConfig {
@@ -91,19 +54,29 @@ export function generateXwalkConfig(
   const models: unknown[] = [];
   const filters: unknown[] = [];
 
-  for (const block of blocks) {
-    const blockId = createId(
-      block.id || block.title,
-    );
+  for (
+    const block of blocks
+  ) {
+    const blockId =
+      createId(
+        block.id ||
+        block.title,
+      );
 
+    /**
+     * Block definition.
+     */
     definitions.push({
       title: block.title,
+
       id: blockId,
+
       plugins: {
         xwalk: {
           page: {
             resourceType:
               'core/franklin/components/block/v1/block',
+
             template: {
               name: block.title,
               model: blockId,
@@ -114,25 +87,41 @@ export function generateXwalkConfig(
       },
     });
 
+    /**
+     * Block model.
+     */
     models.push({
       id: blockId,
+
       fields: [
         {
-          component: 'multiselect',
-          name: 'classes',
-          label: 'Classes',
+          component:
+            'multiselect',
+
+          name:
+            'classes',
+
+          label:
+            'Classes',
+
           options: [
             {
-              name: `${block.title} Style`,
+              name:
+                `${block.title} Style`,
+
               children: [
                 {
-                  name: block.title,
-                  value: blockId,
+                  name:
+                    block.title,
+
+                  value:
+                    blockId,
                 },
               ],
             },
           ],
         },
+
         ...block.fields,
       ],
     });
@@ -147,5 +136,4 @@ export function generateXwalkConfig(
 
 export {
   createId,
-  detectFieldTypes,
 };

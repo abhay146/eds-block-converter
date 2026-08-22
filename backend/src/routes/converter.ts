@@ -12,10 +12,58 @@ import {
 } from '../services/xwalk.js';
 
 /**
- * Detect fields from block HTML.
+ * Detect whether the document/block explicitly contains
+ * column prefixes such as:
  *
- * Nothing is hardcoded for Hero, Columns,
- * Cards or any other block name.
+ * col1_
+ * col2_
+ * col3_
+ *
+ * We DO NOT create these prefixes automatically.
+ */
+function detectColumnPrefix(
+  blockHtml: string,
+): string {
+  const match = blockHtml.match(
+    /\b(col\d+_)/i,
+  );
+
+  if (!match) {
+    return '';
+  }
+
+  return match[1].toLowerCase();
+}
+
+/**
+ * Add a column prefix only when it actually exists
+ * in the DOCX content.
+ *
+ * Example:
+ *
+ * col1_ + image
+ * => col1_image
+ *
+ * col2_ + description
+ * => col2_description
+ *
+ * No prefix:
+ * => image
+ * => description
+ */
+function withColumnPrefix(
+  name: string,
+  prefix: string,
+): string {
+  if (!prefix) {
+    return name;
+  }
+
+  return `${prefix}${name}`;
+}
+
+/**
+ * Detect fields from block HTML.
  */
 function detectFields(
   blockHtml: string,
@@ -39,34 +87,70 @@ function detectFields(
   const hasList =
     $('ul, ol').length > 0;
 
+  /**
+   * Detect explicit column prefix.
+   *
+   * Example:
+   * col1_
+   * col2_
+   */
+  const columnPrefix =
+    detectColumnPrefix(blockHtml);
+
+  /**
+   * Title
+   */
   if (hasHeading) {
     fields.push({
       component: 'text',
-      name: 'title',
+      name: withColumnPrefix(
+        'title',
+        columnPrefix,
+      ),
       label: 'Title',
     });
   }
 
+  /**
+   * Description
+   */
   if (hasParagraph || hasList) {
     fields.push({
       component: 'richtext',
-      name: 'description',
+      name: withColumnPrefix(
+        'description',
+        columnPrefix,
+      ),
       label: 'Description',
     });
   }
 
+  /**
+   * Image
+   */
   if (hasImage) {
     fields.push({
       component: 'reference',
-      name: 'image',
+      name: withColumnPrefix(
+        'image',
+        columnPrefix,
+      ),
       label: 'Image',
+      valueType: 'string',
+      multi: false,
     });
   }
 
+  /**
+   * Link
+   */
   if (hasLink) {
     fields.push({
-      component: 'text',
-      name: 'link',
+      component: 'aem-content',
+      name: withColumnPrefix(
+        'link',
+        columnPrefix,
+      ),
       label: 'Link',
     });
   }
@@ -75,10 +159,19 @@ function detectFields(
 }
 
 /**
- * Get dynamic block name.
+ * Get block name dynamically.
  *
- * First row of the block is treated
- * as the block name.
+ * Example:
+ *
+ * <div class="cards">
+ *   <div>
+ *     <div><p>Hero</p></div>
+ *   </div>
+ * </div>
+ *
+ * Returns:
+ *
+ * Hero
  */
 function getBlockTitle(
   block: cheerio.Cheerio<any>,
@@ -90,6 +183,9 @@ function getBlockTitle(
     return '';
   }
 
+  /**
+   * First try text from the first row.
+   */
   const title =
     firstRow
       .text()
@@ -97,28 +193,64 @@ function getBlockTitle(
       .replace(/\s+/g, ' ')
       .trim();
 
-  return title;
+  if (title) {
+    return title;
+  }
+
+  /**
+   * Fallback to heading.
+   */
+  const heading =
+    firstRow
+      .find(
+        'h1, h2, h3, h4, h5, h6',
+      )
+      .first();
+
+  if (heading.length) {
+    return heading
+      .text()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  return '';
 }
 
 /**
  * Detect blocks automatically.
  *
- * No Hero / Columns / Cards names
- * are hardcoded here.
+ * No block names are hardcoded.
+ *
+ * Hero
+ *   -> hero
+ *
+ * Columns
+ *   -> columns
+ *
+ * Abhay
+ *   -> abhay
+ *
+ * My Banner
+ *   -> my-banner
  */
 function detectBlocks(
   html: string,
 ): DetectedBlock[] {
   const blocks: DetectedBlock[] = [];
 
-  const $ = cheerio.load(html);
+  const $ =
+    cheerio.load(html);
 
   /**
-   * Every .cards container is treated
-   * as a block candidate.
+   * Every .cards container is
+   * treated as a block candidate.
    */
   $('.cards').each(
-    (index, element) => {
+    (
+      index,
+      element,
+    ) => {
       const block =
         $(element);
 
@@ -126,14 +258,18 @@ function detectBlocks(
        * Ignore metadata.
        */
       if (
-        block.hasClass('metadata') ||
-        block.find('.metadata').length
+        block.hasClass(
+          'metadata',
+        ) ||
+        block.find(
+          '.metadata',
+        ).length
       ) {
         return;
       }
 
       /**
-       * Detect block name.
+       * Get block title.
        */
       const title =
         getBlockTitle(block);
@@ -143,13 +279,13 @@ function detectBlocks(
       }
 
       /**
-       * Generate ID automatically.
+       * Generate ID.
        *
-       * Hero
-       *   -> hero
+       * Display title:
+       * Abhay
        *
-       * My Custom Block
-       *   -> my-custom-block
+       * ID:
+       * abhay
        */
       const id =
         createId(title) ||
@@ -162,10 +298,12 @@ function detectBlocks(
         $.html(block);
 
       /**
-       * Detect fields automatically.
+       * Detect fields.
        */
       const fields =
-        detectFields(blockHtml);
+        detectFields(
+          blockHtml,
+        );
 
       blocks.push({
         title,
@@ -176,8 +314,10 @@ function detectBlocks(
   );
 
   /**
-   * Fallback when no .cards blocks
-   * are found.
+   * Fallback:
+   *
+   * If no .cards blocks exist,
+   * create one generic block.
    */
   if (
     !blocks.length &&
@@ -261,7 +401,7 @@ export async function converterRoutes(
           await file.toBuffer();
 
         /**
-         * DOCX → HTML.
+         * DOCX -> HTML.
          */
         const result =
           await mammoth.convertToHtml({
@@ -269,7 +409,7 @@ export async function converterRoutes(
           });
 
         /**
-         * HTML → EDS HTML.
+         * HTML -> EDS HTML.
          */
         const edsHtml =
           convertToEdsHtml(
@@ -292,6 +432,9 @@ export async function converterRoutes(
             blocks,
           );
 
+        /**
+         * Return conversion result.
+         */
         return {
           success: true,
 

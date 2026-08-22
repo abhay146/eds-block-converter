@@ -5,8 +5,8 @@ import { generateXwalkConfig, createId, } from '../services/xwalk.js';
 /**
  * Detect fields from block HTML.
  *
- * Nothing is hardcoded for Hero, Columns,
- * Cards or any other block name.
+ * Block name is NOT hardcoded.
+ * Fields are detected from actual block content.
  */
 function detectFields(blockHtml) {
     const fields = [];
@@ -47,36 +47,70 @@ function detectFields(blockHtml) {
     return fields;
 }
 /**
- * Get dynamic block name.
+ * Get block name dynamically.
  *
- * First row of the block is treated
- * as the block name.
+ * Example:
+ *
+ * <div class="cards">
+ *   <div>
+ *     <div><p>Hero</p></div>
+ *   </div>
+ * </div>
+ *
+ * Returns:
+ *
+ * Hero
+ *
+ * No Hero / Columns / Cards name is hardcoded.
  */
 function getBlockTitle(block) {
     const firstRow = block.children().first();
     if (!firstRow.length) {
         return '';
     }
+    /**
+     * Get text from the first row.
+     */
     const title = firstRow
         .text()
         .replace(/\[IMAGE\]/gi, '')
         .replace(/\s+/g, ' ')
         .trim();
-    return title;
+    if (title) {
+        return title;
+    }
+    /**
+     * Fallback to heading.
+     */
+    const heading = firstRow
+        .find('h1, h2, h3, h4, h5, h6')
+        .first();
+    if (heading.length) {
+        return heading
+            .text()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+    return '';
 }
 /**
  * Detect blocks automatically.
  *
- * No Hero / Columns / Cards names
- * are hardcoded here.
+ * Every .cards container is treated as a block.
+ *
+ * The first row text becomes the block name.
+ *
+ * Example:
+ *
+ * Hero       -> hero
+ * Columns    -> columns
+ * Cards      -> cards
+ * Abhay      -> abhay
+ * My Banner  -> my-banner
  */
 function detectBlocks(html) {
     const blocks = [];
     const $ = cheerio.load(html);
-    /**
-     * Every .cards container is treated
-     * as a block candidate.
-     */
     $('.cards').each((index, element) => {
         const block = $(element);
         /**
@@ -87,20 +121,20 @@ function detectBlocks(html) {
             return;
         }
         /**
-         * Detect block name.
+         * Get dynamic block name.
          */
         const title = getBlockTitle(block);
         if (!title) {
             return;
         }
         /**
-         * Generate ID automatically.
+         * Create block ID.
          *
-         * Hero
-         *   -> hero
+         * Abhay
+         * -> abhay
          *
          * My Custom Block
-         *   -> my-custom-block
+         * -> my-custom-block
          */
         const id = createId(title) ||
             `block-${index + 1}`;
@@ -109,7 +143,7 @@ function detectBlocks(html) {
          */
         const blockHtml = $.html(block);
         /**
-         * Detect fields automatically.
+         * Detect fields.
          */
         const fields = detectFields(blockHtml);
         blocks.push({
@@ -119,8 +153,10 @@ function detectBlocks(html) {
         });
     });
     /**
-     * Fallback when no .cards blocks
-     * are found.
+     * Fallback:
+     *
+     * If there are no .cards blocks,
+     * create one generic block.
      */
     if (!blocks.length &&
         html.trim()) {
@@ -160,8 +196,7 @@ export async function converterRoutes(app) {
             /**
              * Validate extension.
              */
-            const filename = file.filename
-                .toLowerCase();
+            const filename = file.filename.toLowerCase();
             if (!filename.endsWith('.docx')) {
                 return reply
                     .code(400)
@@ -174,23 +209,27 @@ export async function converterRoutes(app) {
              */
             const buffer = await file.toBuffer();
             /**
-             * DOCX → HTML.
+             * DOCX -> HTML.
              */
             const result = await mammoth.convertToHtml({
                 buffer,
             });
             /**
-             * HTML → EDS HTML.
+             * HTML -> EDS HTML.
              */
             const edsHtml = convertToEdsHtml(result.value);
             /**
-             * Detect blocks.
+             * Detect blocks from
+             * converted EDS HTML.
              */
             const blocks = detectBlocks(edsHtml);
             /**
-             * Generate XWalk config.
+             * Generate XWalk configuration.
              */
             const xwalk = generateXwalkConfig(blocks);
+            /**
+             * Return conversion result.
+             */
             return {
                 success: true,
                 filename: file.filename,
