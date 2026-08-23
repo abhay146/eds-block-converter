@@ -6,12 +6,19 @@ import './App.css';
    API CONFIG
 ========================= */
 
+// const API_URL =
+//   import.meta.env.VITE_API_URL ||
+//   (window.location.hostname === 'localhost' ||
+//   window.location.hostname === '127.0.0.1'
+//     ? 'http://localhost:3002/api/convert'
+//     : 'https://eds-block-converter.onrender.com/api/convert');
+
 const API_URL =
   import.meta.env.VITE_API_URL ||
   (window.location.hostname === 'localhost' ||
-  window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:3002/api/convert'
-    : 'https://eds-block-converter.onrender.com/api/convert');
+   window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3002'
+    : 'https://eds-block-converter.onrender.com');
 
 /* =========================
    JSON FORMATTER
