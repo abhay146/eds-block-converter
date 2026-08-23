@@ -5,10 +5,9 @@ import {
   converterRoutes,
 } from './routes/converter.js';
 
-const app =
-  Fastify({
-    logger: true,
-  });
+const app = Fastify({
+  logger: true,
+});
 
 /**
  * Multipart plugin.
@@ -31,7 +30,6 @@ app.get(
   async () => {
     return {
       status: 'ok',
-
       message:
         'EDS Block Converter API is running',
     };
@@ -51,24 +49,24 @@ await app.register(
 /**
  * Start server.
  */
-const start =
-  async () => {
-    try {
-      await app.listen({
-        port: 3002,
-        host: '0.0.0.0',
-      });
+const start = async () => {
+  try {
+    const port =
+      Number(process.env.PORT) || 3002;
 
-      console.log(
-        'EDS Block Converter API running on port 3002',
-      );
-    } catch (err) {
-      app.log.error(
-        err,
-      );
+    await app.listen({
+      port,
+      host: '0.0.0.0',
+    });
 
-      process.exit(1);
-    }
-  };
+    console.log(
+      `EDS Block Converter API running on port ${port}`,
+    );
+  } catch (err) {
+    app.log.error(err);
+
+    process.exit(1);
+  }
+};
 
 start();
