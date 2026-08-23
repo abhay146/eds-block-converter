@@ -13,9 +13,6 @@ const API_URL =
     ? 'http://localhost:3002/api/convert'
     : 'https://eds-block-converter.onrender.com/api/convert');
 
-// const API_URL =
-//   'http://localhost:3002/api/convert';
-
 /* =========================
    JSON FORMATTER
 ========================= */
@@ -274,6 +271,11 @@ function App() {
         file
       );
 
+      console.log(
+        'Calling API:',
+        API_URL
+      );
+
       const response =
         await fetch(API_URL, {
           method: 'POST',
@@ -291,6 +293,11 @@ function App() {
         );
       }
 
+      console.log(
+        'Backend response:',
+        data
+      );
+
       if (!response.ok) {
         throw new Error(
           data?.error ||
@@ -301,10 +308,14 @@ function App() {
       /*
        * IMPORTANT:
        *
-       * Use backend response directly.
+       * Backend response is used directly.
        *
-       * Do NOT create hero-hero-v1
-       * or modify block IDs here.
+       * Frontend does NOT:
+       * - change component
+       * - change field name
+       * - change label
+       * - create hero-hero-v1
+       * - merge reference/referenceAlt
        */
 
       setResult(data);
@@ -324,6 +335,11 @@ function App() {
         setActiveView('json');
       }
     } catch (err) {
+      console.error(
+        'Conversion error:',
+        err
+      );
+
       setError(
         err instanceof Error
           ? err.message
@@ -376,15 +392,6 @@ function App() {
       definitions,
     } = getCurrentXwalk();
 
-    /*
-     * 1. Exact ID match
-     *
-     * Example:
-     * block.id = "hero"
-     *
-     * definition.id = "hero"
-     */
-
     let definition =
       definitions.find(
         (item) =>
@@ -394,13 +401,6 @@ function App() {
     if (definition) {
       return definition;
     }
-
-    /*
-     * 2. Exact title match
-     *
-     * Example:
-     * block.title = "Hero"
-     */
 
     definition =
       definitions.find(
@@ -413,10 +413,6 @@ function App() {
       return definition;
     }
 
-    /*
-     * 3. Match XWalk template name
-     */
-
     definition =
       definitions.find(
         (item) =>
@@ -428,15 +424,6 @@ function App() {
     if (definition) {
       return definition;
     }
-
-    /*
-     * 4. Match XWalk template model
-     *
-     * IMPORTANT:
-     * We only READ the existing value.
-     *
-     * We DO NOT generate or modify IDs.
-     */
 
     definition =
       definitions.find(
@@ -466,10 +453,6 @@ function App() {
       models,
     } = getCurrentXwalk();
 
-    /*
-     * 1. Exact ID
-     */
-
     let model =
       models.find(
         (item) =>
@@ -479,10 +462,6 @@ function App() {
     if (model) {
       return model;
     }
-
-    /*
-     * 2. Exact title
-     */
 
     model =
       models.find(
@@ -520,18 +499,6 @@ function App() {
       findModel(
         activeBlock
       );
-
-    /*
-     * IMPORTANT:
-     *
-     * We use the backend-generated
-     * definition and model exactly
-     * as returned.
-     *
-     * No ID modification.
-     * No style suffix.
-     * No hero-hero-v1 generation.
-     */
 
     const json = {
       definitions:
@@ -628,11 +595,6 @@ function App() {
     const model =
       findModel(block);
 
-    /*
-     * Download exactly the
-     * backend-generated data.
-     */
-
     const json = {
       definitions:
         definition
@@ -717,8 +679,6 @@ function App() {
   return (
     <div className="app dark">
 
-      {/* TOPBAR */}
-
       <header className="topbar">
 
         <div className="brand">
@@ -741,11 +701,7 @@ function App() {
 
       </header>
 
-      {/* WORKSPACE */}
-
       <main className="workspace">
-
-        {/* SIDEBAR */}
 
         <aside className="sidebar">
 
@@ -815,8 +771,6 @@ function App() {
             )}
 
           </div>
-
-          {/* BLOCK LIST */}
 
           {result && (
             <div className="block-list">
@@ -891,11 +845,7 @@ function App() {
 
         </aside>
 
-        {/* CONTENT */}
-
         <section className="content">
-
-          {/* LOADING */}
 
           {loading && (
             <div className="loading-screen">
@@ -936,8 +886,6 @@ function App() {
             </div>
           )}
 
-          {/* EMPTY */}
-
           {!result &&
             !loading && (
               <div className="empty-state">
@@ -961,14 +909,10 @@ function App() {
               </div>
             )}
 
-          {/* RESULT */}
-
           {result &&
             activeBlock &&
             !loading && (
               <div className="result-view">
-
-                {/* HEADER */}
 
                 <div className="content-header">
 
@@ -1021,8 +965,6 @@ function App() {
                   </div>
 
                 </div>
-
-                {/* TABS */}
 
                 <div className="tabs">
 
@@ -1079,8 +1021,6 @@ function App() {
                   </button>
 
                 </div>
-
-                {/* CODE EDITOR */}
 
                 <div
                   className={
@@ -1145,8 +1085,6 @@ function App() {
                   </div>
 
                 </div>
-
-                {/* FIELDS */}
 
                 <div className="fields-panel">
 
