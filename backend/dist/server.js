@@ -1,8 +1,19 @@
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
+import cors from '@fastify/cors';
 import { converterRoutes, } from './routes/converter.js';
 const app = Fastify({
     logger: true,
+});
+/**
+ * CORS plugin.
+ */
+await app.register(cors, {
+    origin: [
+        'https://abhay146.github.io',
+        'http://localhost:5173',
+    ],
+    methods: ['GET', 'POST', 'OPTIONS'],
 });
 /**
  * Multipart plugin.

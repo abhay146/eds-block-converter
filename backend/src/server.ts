@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
+import cors from '@fastify/cors';
 
 import {
   converterRoutes,
@@ -10,14 +11,27 @@ const app = Fastify({
 });
 
 /**
+ * CORS plugin.
+ *
+ * origin: true allows requests from the
+ * frontend during local development and
+ * production testing.
+ */
+await app.register(cors, {
+  origin: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+});
+
+/**
  * Multipart plugin.
+ *
+ * Used for DOCX file uploads.
  */
 await app.register(
   multipart,
   {
     limits: {
-      fileSize:
-        20 * 1024 * 1024,
+      fileSize: 20 * 1024 * 1024, // 20 MB
     },
   },
 );
@@ -30,8 +44,7 @@ app.get(
   async () => {
     return {
       status: 'ok',
-      message:
-        'EDS Block Converter API is running',
+      message: 'EDS Block Converter API is running',
     };
   },
 );
@@ -64,7 +77,6 @@ const start = async () => {
     );
   } catch (err) {
     app.log.error(err);
-
     process.exit(1);
   }
 };
