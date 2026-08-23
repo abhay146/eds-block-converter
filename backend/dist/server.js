@@ -32,11 +32,12 @@ await app.register(converterRoutes, {
  */
 const start = async () => {
     try {
+        const port = Number(process.env.PORT) || 3002;
         await app.listen({
-            port: 3002,
+            port,
             host: '0.0.0.0',
         });
-        console.log('EDS Block Converter API running on port 3002');
+        console.log(`EDS Block Converter API running on port ${port}`);
     }
     catch (err) {
         app.log.error(err);

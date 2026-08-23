@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import './App.css';
 
+// const API_URL =
+//   import.meta.env.VITE_API_URL ||
+//   'http://localhost:3002/api/convert';
+
 const API_URL =
   import.meta.env.VITE_API_URL ||
-  'http://localhost:3002/api/convert';
+  'https://eds-block-converter.onrender.com/api/convert';
 
 /* =========================
    JSON FORMATTER
