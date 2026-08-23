@@ -7,20 +7,23 @@ const app = Fastify({
 });
 /**
  * CORS plugin.
+ *
+ * origin: true allows requests from the
+ * frontend during local development and
+ * production testing.
  */
 await app.register(cors, {
-    origin: [
-        'https://abhay146.github.io',
-        'http://localhost:5173',
-    ],
+    origin: true,
     methods: ['GET', 'POST', 'OPTIONS'],
 });
 /**
  * Multipart plugin.
+ *
+ * Used for DOCX file uploads.
  */
 await app.register(multipart, {
     limits: {
-        fileSize: 20 * 1024 * 1024,
+        fileSize: 20 * 1024 * 1024, // 20 MB
     },
 });
 /**

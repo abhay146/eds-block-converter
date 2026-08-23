@@ -27,6 +27,49 @@ function withColumnPrefix(name, prefix) {
     return `${prefix}${name}`;
 }
 /**
+ * Parse block title and styles.
+ *
+ * Examples:
+ *
+ * Hero
+ * -> title: Hero
+ * -> styles: []
+ *
+ * Hero (hero-v1)
+ * -> title: Hero
+ * -> styles: ["hero-v1"]
+ *
+ * AI Platforms (cards, swiper)
+ * -> title: AI Platforms
+ * -> styles: ["cards", "swiper"]
+ *
+ * Tabs (left-tab, list-layout-two)
+ * -> title: Tabs
+ * -> styles: ["left-tab", "list-layout-two"]
+ */
+function parseBlockTitle(value) {
+    const text = value
+        .replace(/\s+/g, ' ')
+        .trim();
+    const match = text.match(/^(.*?)\s*\(([^()]*)\)\s*$/);
+    if (!match) {
+        return {
+            title: text,
+            styles: [],
+        };
+    }
+    const title = match[1]
+        .trim();
+    const styles = match[2]
+        .split(',')
+        .map((style) => style.trim())
+        .filter(Boolean);
+    return {
+        title,
+        styles,
+    };
+}
+/**
  * Detect XWalk fields.
  */
 function detectFields(blockHtml) {
@@ -83,21 +126,21 @@ function detectFields(blockHtml) {
     return fields;
 }
 /**
- * Get block title from first row.
+ * Get raw block title from first row.
  *
  * Example:
  *
  * <div class="cards">
  *   <div>
  *     <div>
- *       <p>Hero</p>
+ *       <p>Hero (hero-v1)</p>
  *     </div>
  *   </div>
  * </div>
  *
  * returns:
  *
- * Hero
+ * Hero (hero-v1)
  */
 function getBlockTitle(block) {
     const firstRow = block.children().first();
@@ -161,14 +204,37 @@ function detectBlocks(html) {
             return;
         }
         /**
-         * Get title.
+         * Get raw title.
          */
-        const title = getBlockTitle(block);
+        const rawTitle = getBlockTitle(block);
+        if (!rawTitle) {
+            return;
+        }
+        /**
+         * Parse block name and styles.
+         *
+         * Example:
+         *
+         * Hero (hero-v1)
+         *
+         * becomes:
+         *
+         * title = Hero
+         * styles = ["hero-v1"]
+         */
+        const { title, styles, } = parseBlockTitle(rawTitle);
         if (!title) {
             return;
         }
         /**
-         * Generate ID.
+         * Generate block ID
+         * from block name only.
+         *
+         * Hero
+         * -> hero
+         *
+         * AI Platforms
+         * -> ai-platforms
          */
         const id = createId(title) ||
             `block-${index + 1}`;
@@ -184,12 +250,32 @@ function detectBlocks(html) {
          * Final EDS HTML.
          */
         const finalHtml = createEdsBlockHtml(originalHtml, id);
-        blocks.push({
+        /**
+         * IMPORTANT:
+         *
+         * styles are NOT added to
+         * DetectedBlock.
+         *
+         * They are stored temporarily
+         * as a non-enumerable property.
+         *
+         * xwalk.ts can read them,
+         * but JSON output will NOT contain:
+         *
+         * "styles": [...]
+         */
+        const detectedBlock = {
             title,
             id,
             fields,
             html: finalHtml,
+        };
+        Object.defineProperty(detectedBlock, '_styles', {
+            value: styles,
+            enumerable: false,
+            writable: true,
         });
+        blocks.push(detectedBlock);
     });
     /**
      * Generic fallback.

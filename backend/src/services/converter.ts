@@ -16,15 +16,30 @@ import type { Element } from 'domhandler';
  * The temporary "cards" class is replaced later
  * by the detected block name.
  */
-export function convertToEdsHtml(html: string): string {
-  const $ = cheerio.load(html);
+export function convertToEdsHtml(
+  html: string,
+): string {
+  const $ =
+    cheerio.load(html);
 
-  $('table').each((_, table) => {
-    const converted = convertTableToBlock($, table);
-    $(table).replaceWith(converted);
-  });
+  $('table').each(
+    (_, table) => {
+      const converted =
+        convertTableToBlock(
+          $,
+          table,
+        );
 
-  return $('body').html() || '';
+      $(table).replaceWith(
+        converted,
+      );
+    },
+  );
+
+  return (
+    $('body').html() ||
+    ''
+  );
 }
 
 /**
@@ -34,47 +49,74 @@ function convertTableToBlock(
   $: cheerio.CheerioAPI,
   table: Element,
 ): string {
-  const rows = $(table)
-    .find('tr')
-    .toArray();
+  const rows =
+    $(table)
+      .find('tr')
+      .toArray();
 
   if (!rows.length) {
     return $(table).toString();
   }
 
   /**
-   * Metadata table should not become a block.
+   * Metadata table should not
+   * become a block.
    */
-  if (isMetadataTable($, rows)) {
-    return convertMetadataTable($, rows);
+  if (
+    isMetadataTable(
+      $,
+      rows,
+    )
+  ) {
+    return convertMetadataTable(
+      $,
+      rows,
+    );
   }
 
-  const blockRows = rows
-    .map((row) => {
-      const cells = $(row)
-        .find('th, td')
-        .toArray();
+  const blockRows =
+    rows
+      .map(
+        (row) => {
+          const cells =
+            $(row)
+              .find('th, td')
+              .toArray();
 
-      if (!cells.length) {
-        return '';
-      }
+          if (!cells.length) {
+            return '';
+          }
 
-      const cellHtml = cells
-        .map((cell) => {
-          const content = cleanCell(
-            $,
-            $(cell).html() || '',
-          );
+          const cellHtml =
+            cells
+              .map(
+                (cell) => {
+                  const content =
+                    cleanCell(
+                      $,
+                      $(cell).html() ||
+                        '',
+                    );
 
-          return `<div>${content}</div>`;
-        })
-        .join('\n    ');
+                  return `<div>${content}</div>`;
+                },
+              )
+              .join(
+                '\n    ',
+              );
 
-      return `<div>\n    ${cellHtml}\n  </div>`;
-    })
-    .filter(Boolean);
+          return [
+            '<div>',
+            `    ${cellHtml}`,
+            '  </div>',
+          ].join('\n');
+        },
+      )
+      .filter(Boolean);
 
-  if (!blockRows.length) {
+  if (
+    !blockRows.length
+  ) {
     return '';
   }
 
@@ -92,18 +134,29 @@ function isMetadataTable(
   $: cheerio.CheerioAPI,
   rows: Element[],
 ): boolean {
-  const text = rows
-    .slice(0, 2)
-    .map((row) => $(row).text())
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+  const text =
+    rows
+      .slice(0, 2)
+      .map(
+        (row) =>
+          $(row).text(),
+      )
+      .join(' ')
+      .replace(
+        /\s+/g,
+        ' ',
+      )
+      .trim()
+      .toLowerCase();
 
   return (
-    text.includes('section metadata') ||
+    text.includes(
+      'section metadata',
+    ) ||
     text === 'metadata' ||
-    text.startsWith('metadata ')
+    text.startsWith(
+      'metadata ',
+    )
   );
 }
 
@@ -114,41 +167,63 @@ function convertMetadataTable(
   $: cheerio.CheerioAPI,
   rows: Element[],
 ): string {
-  const values: string[] = [];
+  const values:
+    string[] = [];
 
-  for (const row of rows) {
-    const cells = $(row)
-      .find('th, td')
-      .toArray();
+  for (
+    const row of rows
+  ) {
+    const cells =
+      $(row)
+        .find('th, td')
+        .toArray();
 
-    if (cells.length < 2) {
+    if (
+      cells.length < 2
+    ) {
       continue;
     }
 
-    const key = $(cells[0])
-      .text()
-      .replace(/\s+/g, ' ')
-      .trim();
+    const key =
+      $(cells[0])
+        .text()
+        .replace(
+          /\s+/g,
+          ' ',
+        )
+        .trim();
 
-    const value = $(cells[1])
-      .text()
-      .replace(/\s+/g, ' ')
-      .trim();
+    const value =
+      $(cells[1])
+        .text()
+        .replace(
+          /\s+/g,
+          ' ',
+        )
+        .trim();
 
     if (
       key &&
       value &&
-      key.toLowerCase() !== 'section metadata' &&
-      key.toLowerCase() !== 'metadata'
+      key.toLowerCase() !==
+        'section metadata' &&
+      key.toLowerCase() !==
+        'metadata'
     ) {
       values.push(
-        `<div>${escapeHtml(key)}</div>`,
-        `<div>${escapeHtml(value)}</div>`,
+        `<div>${escapeHtml(
+          key,
+        )}</div>`,
+        `<div>${escapeHtml(
+          value,
+        )}</div>`,
       );
     }
   }
 
-  if (!values.length) {
+  if (
+    !values.length
+  ) {
     return '';
   }
 
@@ -162,97 +237,138 @@ function convertMetadataTable(
 /**
  * Clean a table cell.
  *
- * IMPORTANT:
- * We intentionally DO NOT keep base64 image data.
- *
- * DOCX image:
- *
- * <img src="data:image/jpeg;base64,...">
- *
- * becomes:
- *
- * [IMAGE]
+ * Base64 image data is removed.
  */
 function cleanCell(
   $: cheerio.CheerioAPI,
   cell: string,
 ): string {
-  const $cell = cheerio.load(cell);
+  const $cell =
+    cheerio.load(cell);
 
   /**
-   * Remove base64 image.
-   *
-   * We keep an EDS-friendly marker instead.
+   * Replace images with
+   * EDS-friendly markers.
    */
-  $cell('img').each((_, img) => {
-    const alt =
-      $cell(img)
-        .attr('alt')
-        ?.trim() || '';
+  $cell('img').each(
+    (_, img) => {
+      const alt =
+        $cell(img)
+          .attr('alt')
+          ?.trim() ||
+        '';
 
-    if (alt) {
-      $cell(img).replaceWith(
-        `[IMAGE:${escapeText(alt)}]`,
-      );
-    } else {
-      $cell(img).replaceWith('[IMAGE]');
-    }
-  });
+      if (alt) {
+        $cell(img).replaceWith(
+          `[IMAGE:${escapeText(
+            alt,
+          )}]`,
+        );
+      } else {
+        $cell(img).replaceWith(
+          '[IMAGE]',
+        );
+      }
+    },
+  );
 
   /**
    * Remove empty paragraphs.
    */
-  $cell('p').each((_, p) => {
-    const hasText =
-      $cell(p)
-        .text()
-        .trim()
-        .length > 0;
+  $cell('p').each(
+    (_, p) => {
+      const hasText =
+        $cell(p)
+          .text()
+          .trim()
+          .length > 0;
 
-    const hasImage =
-      $cell(p).text().includes('[IMAGE]');
+      const hasImage =
+        $cell(p)
+          .text()
+          .includes(
+            '[IMAGE]',
+          );
 
-    if (!hasText && !hasImage) {
-      $cell(p).remove();
-    }
-  });
+      if (
+        !hasText &&
+        !hasImage
+      ) {
+        $cell(p).remove();
+      }
+    },
+  );
 
   /**
    * Remove empty divs.
    */
-  $cell('div').each((_, div) => {
-    const text =
-      $cell(div)
-        .text()
-        .trim();
+  $cell('div').each(
+    (_, div) => {
+      const text =
+        $cell(div)
+          .text()
+          .trim();
 
-    if (!text && !$cell(div).find('img').length) {
-      $cell(div).remove();
-    }
-  });
+      if (
+        !text &&
+        !$cell(div).find(
+          'img',
+        ).length
+      ) {
+        $cell(div).remove();
+      }
+    },
+  );
 
   return (
-    $cell.root().html()?.trim() || ''
+    $cell
+      .root()
+      .html()
+      ?.trim() ||
+    ''
   );
 }
 
 /**
  * Escape HTML.
  */
-function escapeHtml(value: string): string {
+function escapeHtml(
+  value: string,
+): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(
+      /&/g,
+      '&amp;',
+    )
+    .replace(
+      /</g,
+      '&lt;',
+    )
+    .replace(
+      />/g,
+      '&gt;',
+    )
+    .replace(
+      /"/g,
+      '&quot;',
+    )
+    .replace(
+      /'/g,
+      '&#039;',
+    );
 }
 
 /**
- * Escape simple text used inside image markers.
+ * Escape simple text used
+ * inside image markers.
  */
-function escapeText(value: string): string {
+function escapeText(
+  value: string,
+): string {
   return value
-    .replace(/[\[\]]/g, '')
+    .replace(
+      /[\[\]]/g,
+      '',
+    )
     .trim();
 }
