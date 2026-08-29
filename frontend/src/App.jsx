@@ -1,235 +1,37 @@
-import { useEffect, useMemo, useState } from 'react';
-
+import { useMemo, useState } from 'react';
 import './App.css';
 
-/* =========================
-   API CONFIG
-========================= */
-
-// const API_URL =
-//   import.meta.env.VITE_API_URL ||
-//   (window.location.hostname === 'localhost' ||
-//   window.location.hostname === '127.0.0.1'
-//     ? 'http://localhost:3002/api/convert'
-//     : 'https://eds-block-converter.onrender.com/api/convert');
-
 const API_URL =
-  import.meta.env.VITE_API_URL ||
-  (window.location.hostname === 'localhost' ||
-   window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:3002'
-    : 'https://eds-block-converter.onrender.com');
-
-/* =========================
-   JSON FORMATTER
-========================= */
-
-function formatJson(data) {
-  try {
-    return JSON.stringify(data, null, 2);
-  } catch {
-    return String(data || '');
-  }
-}
-
-/* =========================
-   HTML FORMATTER
-========================= */
-
-function formatHtml(html) {
-  if (!html) {
-    return '';
-  }
-
-  const voidTags = new Set([
-    'area',
-    'base',
-    'br',
-    'col',
-    'embed',
-    'hr',
-    'img',
-    'input',
-    'link',
-    'meta',
-    'param',
-    'source',
-    'track',
-    'wbr',
-  ]);
-
-  const normalized = html
-    .replace(/\r\n/g, '\n')
-    .replace(/\n+/g, '')
-    .replace(/>\s+</g, '><')
-    .replace(/></g, '>\n<');
-
-  const lines = normalized
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  let indent = 0;
-
-  return lines
-    .map((line) => {
-      const closingTag = line.match(
-        /^<\/([a-zA-Z][\w-]*)/
-      );
-
-      const openingTag = line.match(
-        /^<([a-zA-Z][\w-]*)\b/
-      );
-
-      const isClosing = Boolean(closingTag);
-
-      const tagName =
-        closingTag?.[1] ||
-        openingTag?.[1] ||
-        '';
-
-      const isSelfClosing =
-        /\/>$/.test(line) ||
-        voidTags.has(tagName.toLowerCase());
-
-      if (isClosing) {
-        indent = Math.max(0, indent - 1);
-      }
-
-      const formatted =
-        '  '.repeat(indent) + line;
-
-      if (
-        openingTag &&
-        !isClosing &&
-        !isSelfClosing &&
-        !line.includes('</')
-      ) {
-        indent += 1;
-      }
-
-      return formatted;
-    })
-    .join('\n');
-}
-
-/* =========================
-   FILE DOWNLOAD
-========================= */
-
-function downloadFile(
-  content,
-  filename,
-  type
-) {
-  const blob = new Blob(
-    [content],
-    { type }
-  );
-
-  const url =
-    URL.createObjectURL(blob);
-
-  const link =
-    document.createElement('a');
-
-  link.href = url;
-  link.download = filename;
-
-  document.body.appendChild(link);
-
-  link.click();
-
-  link.remove();
-
-  URL.revokeObjectURL(url);
-}
-
-/* =========================
-   MAIN APP
-========================= */
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3002/api/convert'
+    : 'https://eds-block-converter.onrender.com/api/convert';
 
 function App() {
-  const [file, setFile] =
-    useState(null);
+  const [file, setFile] = useState(null);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const [loading, setLoading] =
-    useState(false);
+  const [selectedBlockIndex, setSelectedBlockIndex] = useState(0);
+  const [activeTab, setActiveTab] = useState('json');
 
-  const [loadingText, setLoadingText] =
-    useState(
-      'Preparing your document...'
-    );
-
-  const [result, setResult] =
-    useState(null);
-
-  const [error, setError] =
-    useState('');
-
-  const [activeBlock, setActiveBlock] =
-    useState(null);
-
-  const [activeView, setActiveView] =
-    useState('json');
-
-  const [copied, setCopied] =
-    useState(false);
-
-  /* =========================
-     LOADER MESSAGES
-  ========================= */
-
-  useEffect(() => {
-    if (!loading) {
-      return;
+  const blockFiles = useMemo(() => {
+    if (!result || !Array.isArray(result.blockFiles)) {
+      return [];
     }
 
-    const messages = [
-      'Reading DOCX document...',
-      'Extracting document content...',
-      'Detecting EDS blocks...',
-      'Generating XWalk configuration...',
-      'Building block models...',
-      'Formatting JSON...',
-      'Formatting HTML...',
-      'Almost ready...',
-    ];
+    return result.blockFiles;
+  }, [result]);
 
-    let index = 0;
+  const selectedBlock =
+    blockFiles[selectedBlockIndex] || null;
 
-    setLoadingText(messages[0]);
-
-    const timer =
-      setInterval(() => {
-        index =
-          (index + 1) %
-          messages.length;
-
-        setLoadingText(
-          messages[index]
-        );
-      }, 850);
-
-    return () =>
-      clearInterval(timer);
-  }, [loading]);
-
-  /* =========================
-     FILE SELECT
-  ========================= */
-
-  function handleFileChange(event) {
+  const handleFileChange = (event) => {
     const selectedFile =
       event.target.files?.[0];
 
-    setError('');
-    setResult(null);
-    setActiveBlock(null);
-    setCopied(false);
-
     if (!selectedFile) {
-      setFile(null);
       return;
     }
 
@@ -238,23 +40,22 @@ function App() {
         .toLowerCase()
         .endsWith('.docx')
     ) {
-      setFile(null);
-
       setError(
-        'Please select a DOCX file.'
+        'Only DOCX files are supported.'
       );
 
+      setFile(null);
       return;
     }
 
     setFile(selectedFile);
-  }
+    setResult(null);
+    setError('');
+    setSelectedBlockIndex(0);
+    setActiveTab('json');
+  };
 
-  /* =========================
-     CONVERT
-  ========================= */
-
-  async function handleConvert() {
+  const handleConvert = async () => {
     if (!file) {
       setError(
         'Please select a DOCX file first.'
@@ -266,12 +67,9 @@ function App() {
     setLoading(true);
     setError('');
     setResult(null);
-    setActiveBlock(null);
-    setCopied(false);
 
     try {
-      const formData =
-        new FormData();
+      const formData = new FormData();
 
       formData.append(
         'file',
@@ -279,7 +77,7 @@ function App() {
       );
 
       console.log(
-        'Calling API:',
+        'API URL:',
         API_URL
       );
 
@@ -287,60 +85,71 @@ function App() {
         await fetch(API_URL, {
           method: 'POST',
           body: formData,
+          cache: 'no-store',
         });
 
-      let data;
+      const responseText =
+        await response.text();
+
+      console.log(
+        'RAW BACKEND RESPONSE:'
+      );
+
+      console.log(
+        responseText
+      );
+
+      let backendData;
 
       try {
-        data =
-          await response.json();
+        backendData =
+          JSON.parse(
+            responseText
+          );
       } catch {
         throw new Error(
-          'Backend returned an invalid response.'
+          responseText ||
+            'Backend did not return valid JSON.'
         );
       }
 
-      console.log(
-        'Backend response:',
-        data
-      );
-
       if (!response.ok) {
         throw new Error(
-          data?.error ||
-            'Conversion failed.'
+          backendData?.error ||
+            backendData?.message ||
+            `Request failed with status ${response.status}`
         );
       }
 
       /*
-       * IMPORTANT:
+       * IMPORTANT
        *
-       * Backend response is used directly.
+       * Backend response ko EXACTLY
+       * as it is save kar rahe hain.
        *
-       * Frontend does NOT:
-       * - change component
-       * - change field name
-       * - change label
-       * - create hero-hero-v1
-       * - merge reference/referenceAlt
+       * No transformation.
+       * No field rename.
+       * No field delete.
+       * No merge.
        */
 
-      setResult(data);
+      console.log(
+        'EXACT PARSED BACKEND DATA:'
+      );
 
-      const blocks =
-        Array.isArray(
-          data?.detectedBlocks
-        )
-          ? data.detectedBlocks
-          : [];
+      console.log(
+        backendData
+      );
 
-      if (blocks.length > 0) {
-        setActiveBlock(
-          blocks[0]
-        );
+      setResult(
+        backendData
+      );
 
-        setActiveView('json');
-      }
+      setSelectedBlockIndex(0);
+
+      setActiveTab(
+        'json'
+      );
     } catch (err) {
       console.error(
         'Conversion error:',
@@ -348,348 +157,129 @@ function App() {
       );
 
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Something went wrong while converting the document.'
+        err?.message ||
+          'Something went wrong while converting the document.'
       );
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  /* =========================
-     GET CURRENT XWALK DATA
-  ========================= */
+  const handleReset = () => {
+    setFile(null);
+    setResult(null);
+    setError('');
+    setSelectedBlockIndex(0);
+    setActiveTab('json');
+  };
 
-  function getCurrentXwalk() {
-    return {
-      definitions:
-        Array.isArray(
-          result?.xwalk?.definitions
-        )
-          ? result.xwalk.definitions
-          : [],
+  const selectBlock = (index) => {
+    setSelectedBlockIndex(index);
+    setActiveTab('json');
+  };
 
-      models:
-        Array.isArray(
-          result?.xwalk?.models
-        )
-          ? result.xwalk.models
-          : [],
-
-      filters:
-        Array.isArray(
-          result?.xwalk?.filters
-        )
-          ? result.xwalk.filters
-          : [],
-    };
-  }
-
-  /* =========================
-     FIND DEFINITION
-  ========================= */
-
-  function findDefinition(block) {
-    if (!block) {
-      return null;
-    }
-
-    const {
-      definitions,
-    } = getCurrentXwalk();
-
-    let definition =
-      definitions.find(
-        (item) =>
-          item?.id === block.id
-      );
-
-    if (definition) {
-      return definition;
-    }
-
-    definition =
-      definitions.find(
-        (item) =>
-          item?.title ===
-          block.title
-      );
-
-    if (definition) {
-      return definition;
-    }
-
-    definition =
-      definitions.find(
-        (item) =>
-          item?.plugins?.xwalk?.page
-            ?.template?.name ===
-          block.title
-      );
-
-    if (definition) {
-      return definition;
-    }
-
-    definition =
-      definitions.find(
-        (item) =>
-          item?.plugins?.xwalk?.page
-            ?.template?.model ===
-          block.id
-      );
-
-    if (definition) {
-      return definition;
-    }
-
-    return null;
-  }
-
-  /* =========================
-     FIND MODEL
-  ========================= */
-
-  function findModel(block) {
-    if (!block) {
-      return null;
-    }
-
-    const {
-      models,
-    } = getCurrentXwalk();
-
-    let model =
-      models.find(
-        (item) =>
-          item?.id === block.id
-      );
-
-    if (model) {
-      return model;
-    }
-
-    model =
-      models.find(
-        (item) =>
-          item?.title ===
-          block.title
-      );
-
-    if (model) {
-      return model;
-    }
-
-    return null;
-  }
-
-  /* =========================
-     XWALK JSON
-  ========================= */
-
-  function getJson() {
-    if (!activeBlock) {
-      return '{}';
-    }
-
-    const {
-      filters,
-    } = getCurrentXwalk();
-
-    const definition =
-      findDefinition(
-        activeBlock
-      );
-
-    const model =
-      findModel(
-        activeBlock
-      );
-
-    const json = {
-      definitions:
-        definition
-          ? [definition]
-          : [],
-
-      models:
-        model
-          ? [model]
-          : [],
-
-      filters,
-    };
-
-    return formatJson(json);
-  }
-
-  /* =========================
-     HTML
-  ========================= */
-
-  function getHtml() {
-    if (!activeBlock) {
-      return '';
-    }
-
-    return formatHtml(
-      activeBlock.html || ''
-    );
-  }
-
-  /* =========================
-     CURRENT CODE
-  ========================= */
-
-  const currentCode =
-    useMemo(() => {
-      if (
-        activeView === 'html'
-      ) {
-        return getHtml();
-      }
-
-      return getJson();
-    }, [
-      activeBlock,
-      activeView,
-      result,
-    ]);
-
-  /* =========================
-     COPY
-  ========================= */
-
-  async function copyText(text) {
-    if (!text) {
+  const downloadFile = (
+    content,
+    filename,
+    type
+  ) => {
+    if (
+      content === undefined ||
+      content === null
+    ) {
       return;
     }
+
+    const blob =
+      new Blob(
+        [
+          typeof content === 'string'
+            ? content
+            : JSON.stringify(
+                content,
+                null,
+                2
+              ),
+        ],
+        {
+          type,
+        }
+      );
+
+    const url =
+      URL.createObjectURL(
+        blob
+      );
+
+    const link =
+      document.createElement('a');
+
+    link.href = url;
+
+    link.download =
+      filename;
+
+    document.body.appendChild(
+      link
+    );
+
+    link.click();
+
+    document.body.removeChild(
+      link
+    );
+
+    URL.revokeObjectURL(
+      url
+    );
+  };
+
+  const copyContent = async () => {
+    if (!selectedBlock) {
+      return;
+    }
+
+    const content =
+      activeTab === 'json'
+        ? JSON.stringify(
+            selectedBlock.json,
+            null,
+            2
+          )
+        : selectedBlock.html || '';
 
     try {
       await navigator.clipboard.writeText(
-        text
+        content
       );
-
-      setCopied(true);
-
-      setTimeout(() => {
-        setCopied(false);
-      }, 1500);
-    } catch {
-      setError(
-        'Unable to copy content.'
+    } catch (err) {
+      console.error(
+        'Copy failed:',
+        err
       );
     }
-  }
+  };
 
-  /* =========================
-     DOWNLOAD JSON
-  ========================= */
+  const jsonContent =
+    selectedBlock?.json
+      ? JSON.stringify(
+          selectedBlock.json,
+          null,
+          2
+        )
+      : '';
 
-  function downloadBlockJson(block) {
-    if (!block) {
-      return;
-    }
-
-    const {
-      filters,
-    } = getCurrentXwalk();
-
-    const definition =
-      findDefinition(block);
-
-    const model =
-      findModel(block);
-
-    const json = {
-      definitions:
-        definition
-          ? [definition]
-          : [],
-
-      models:
-        model
-          ? [model]
-          : [],
-
-      filters,
-    };
-
-    downloadFile(
-      formatJson(json),
-      `${block.id}.json`,
-      'application/json'
-    );
-  }
-
-  /* =========================
-     DOWNLOAD HTML
-  ========================= */
-
-  function downloadBlockHtml(
-    block
-  ) {
-    if (!block) {
-      return;
-    }
-
-    downloadFile(
-      formatHtml(
-        block.html || ''
-      ),
-      `${block.id}.html`,
-      'text/html'
-    );
-  }
-
-  /* =========================
-     LINE NUMBERS
-  ========================= */
-
-  function renderCode() {
-    if (!currentCode) {
-      return null;
-    }
-
-    const lines =
-      currentCode.split('\n');
-
-    return lines.map(
-      (line, index) => (
-        <div
-          className="code-line"
-          key={index}
-        >
-          <span className="line-number">
-            {index + 1}
-          </span>
-
-          <span
-            className={
-              activeView === 'json'
-                ? 'line-content json-code'
-                : 'line-content html-code'
-            }
-          >
-            {line || ' '}
-          </span>
-        </div>
-      )
-    );
-  }
-
-  /* =========================
-     RENDER
-  ========================= */
+  const htmlContent =
+    selectedBlock?.html || '';
 
   return (
-    <div className="app dark">
+    <div className="app">
+      {/* =========================
+          HEADER
+      ========================= */}
 
-      <header className="topbar">
-
+      <header className="top-header">
         <div className="brand">
-
           <div className="brand-icon">
             E
           </div>
@@ -703,17 +293,20 @@ function App() {
               DOCX → EDS HTML + XWalk
             </p>
           </div>
-
         </div>
-
       </header>
 
-      <main className="workspace">
+      {/* =========================
+          MAIN LAYOUT
+      ========================= */}
+
+      <div className="workspace">
+        {/* =========================
+            LEFT SIDEBAR
+        ========================= */}
 
         <aside className="sidebar">
-
-          <div className="upload-box">
-
+          <div className="upload-card">
             <div className="upload-icon">
               ↑
             </div>
@@ -723,15 +316,11 @@ function App() {
             </h2>
 
             <p>
-              Select a DOCX file to
-              generate EDS blocks.
+              Select a DOCX file to generate EDS blocks.
             </p>
 
-            <label className="upload-button">
-
-              <span>
-                Choose DOCX
-              </span>
+            <label className="choose-button">
+              Choose DOCX
 
               <input
                 type="file"
@@ -740,30 +329,29 @@ function App() {
                   handleFileChange
                 }
               />
-
             </label>
 
             {file && (
-              <div className="file-name">
-
-                <span className="file-icon">
+              <div className="file-info">
+                <div className="docx-icon">
                   DOCX
-                </span>
+                </div>
 
-                <span className="file-text">
+                <span>
                   {file.name}
                 </span>
-
               </div>
             )}
 
             <button
+              type="button"
               className="convert-button"
-              disabled={
-                !file || loading
-              }
               onClick={
                 handleConvert
+              }
+              disabled={
+                !file ||
+                loading
               }
             >
               {loading
@@ -771,395 +359,277 @@ function App() {
                 : 'Convert Document'}
             </button>
 
+            {result && (
+              <button
+                type="button"
+                className="reset-button"
+                onClick={
+                  handleReset
+                }
+              >
+                Reset
+              </button>
+            )}
+
             {error && (
-              <div className="error">
+              <div className="error-box">
                 {error}
               </div>
             )}
-
           </div>
 
-          {result && (
-            <div className="block-list">
+          {/* =========================
+              DETECTED BLOCKS
+          ========================= */}
 
-              <div className="section-title">
-
+          {blockFiles.length > 0 && (
+            <div className="blocks-section">
+              <div className="blocks-heading">
                 <span>
-                  Detected Blocks
+                  DETECTED BLOCKS
                 </span>
 
-                <span className="count">
-                  {result.detectedBlocks
-                    ?.length || 0}
+                <span className="block-count">
+                  {blockFiles.length}
                 </span>
-
               </div>
 
-              <div className="blocks-wrapper">
-
-                {result.detectedBlocks?.map(
-                  (block, index) => (
+              <div className="blocks-list">
+                {blockFiles.map(
+                  (
+                    block,
+                    index
+                  ) => (
                     <button
-                      key={`${block.id}-${index}`}
-                      className={
-                        activeBlock === block
-                          ? 'block-item active'
-                          : 'block-item'
+                      type="button"
+                      key={`${block.name}-${index}`}
+                      className={`block-item ${
+                        selectedBlockIndex ===
+                        index
+                          ? 'active'
+                          : ''
+                      }`}
+                      onClick={() =>
+                        selectBlock(
+                          index
+                        )
                       }
-                      onClick={() => {
-                        setActiveBlock(
-                          block
-                        );
-
-                        setActiveView(
-                          'json'
-                        );
-
-                        setCopied(
-                          false
-                        );
-                      }}
                     >
-
-                      <span className="block-symbol">
+                      <div className="block-item-icon">
                         ▦
-                      </span>
+                      </div>
 
-                      <span className="block-info">
-
+                      <div className="block-item-content">
                         <strong>
-                          {block.title}
+                          {block.json?.title ||
+                            block.name ||
+                            `Block ${index + 1}`}
                         </strong>
 
-                        <small>
-                          {block.id}
-                        </small>
+                        <span>
+                          {block.json?.id ||
+                            block.name ||
+                            'block'}
+                        </span>
+                      </div>
 
-                      </span>
-
-                      <span className="block-arrow">
+                      <div className="arrow">
                         →
-                      </span>
-
+                      </div>
                     </button>
                   )
                 )}
-
               </div>
-
             </div>
           )}
-
         </aside>
 
-        <section className="content">
+        {/* =========================
+            CONTENT
+        ========================= */}
 
+        <main className="content">
           {loading && (
-            <div className="loading-screen">
+            <div className="loading-state">
+              <div className="loader" />
 
-              <div className="loader-card">
-
-                <div className="loader-dots">
-
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-
-                </div>
-
-                <h2>
-                  Converting document
-                </h2>
-
-                <p>
-                  {loadingText}
-                </p>
-
-                <div className="loading-line">
-                  <span />
-                </div>
-
-                <small>
-                  Generating your EDS blocks
-                </small>
-
-              </div>
-
+              <p>
+                Converting your document...
+              </p>
             </div>
           )}
 
-          {!result &&
-            !loading && (
+          {!loading &&
+            !result && (
               <div className="empty-state">
-
                 <div className="empty-icon">
-                  <span>
-                    E
-                  </span>
+                  E
                 </div>
 
                 <h2>
-                  Start by uploading a DOCX
+                  Upload a DOCX document
                 </h2>
 
                 <p>
-                  Your detected blocks,
-                  XWalk JSON and HTML
-                  will appear here.
+                  Converted blocks will appear here.
                 </p>
-
               </div>
             )}
 
-          {result &&
-            activeBlock &&
-            !loading && (
-              <div className="result-view">
+          {!loading &&
+            selectedBlock && (
+              <>
+                {/* =========================
+                    BLOCK HEADER
+                ========================= */}
 
                 <div className="content-header">
-
-                  <div className="block-heading">
-
-                    <div className="block-label">
+                  <div>
+                    <p className="content-label">
                       BLOCK NAME
-                    </div>
+                    </p>
 
                     <h2>
-                      {activeBlock.title}
+                      {selectedBlock.json?.title ||
+                        selectedBlock.name ||
+                        'Block'}
                     </h2>
 
-                    <span className="id-badge">
-                      {activeBlock.id}
+                    <span className="block-id">
+                      {selectedBlock.json?.id ||
+                        selectedBlock.name ||
+                        'block'}
                     </span>
-
                   </div>
 
-                  <div className="block-actions">
-
+                  <div className="download-actions">
                     <button
+                      type="button"
                       onClick={() =>
-                        downloadBlockJson(
-                          activeBlock
+                        downloadFile(
+                          selectedBlock.json,
+                          selectedBlock.jsonFile ||
+                            `${selectedBlock.name}.json`,
+                          'application/json'
                         )
                       }
                     >
-                      <span>
-                        ↓
-                      </span>
-
-                      JSON
+                      ⇩ JSON
                     </button>
 
                     <button
+                      type="button"
                       onClick={() =>
-                        downloadBlockHtml(
-                          activeBlock
+                        downloadFile(
+                          selectedBlock.html ||
+                            '',
+                          selectedBlock.htmlFile ||
+                            `${selectedBlock.name}.html`,
+                          'text/html'
                         )
                       }
                     >
-                      <span>
-                        ↓
-                      </span>
-
-                      HTML
+                      ⇩ HTML
                     </button>
-
                   </div>
-
                 </div>
+
+                {/* =========================
+                    TABS
+                ========================= */}
 
                 <div className="tabs">
-
                   <button
+                    type="button"
                     className={
-                      activeView ===
+                      activeTab ===
                       'json'
-                        ? 'active'
-                        : ''
+                        ? 'tab active-tab'
+                        : 'tab'
                     }
-                    onClick={() => {
-                      setActiveView(
+                    onClick={() =>
+                      setActiveTab(
                         'json'
-                      );
-
-                      setCopied(
-                        false
-                      );
-                    }}
+                      )
+                    }
                   >
-
-                    <span className="tab-icon">
-                      {'{}'}
-                    </span>
-
-                    JSON
-
+                    {'{}'} JSON
                   </button>
 
                   <button
+                    type="button"
                     className={
-                      activeView ===
+                      activeTab ===
                       'html'
-                        ? 'active'
-                        : ''
+                        ? 'tab active-tab'
+                        : 'tab'
                     }
-                    onClick={() => {
-                      setActiveView(
+                    onClick={() =>
+                      setActiveTab(
                         'html'
-                      );
-
-                      setCopied(
-                        false
-                      );
-                    }}
+                      )
+                    }
                   >
-
-                    <span className="tab-icon">
-                      {'</>'}
-                    </span>
-
-                    HTML
-
+                    {'</>'} HTML
                   </button>
-
                 </div>
 
-                <div
-                  className={
-                    activeView ===
-                    'json'
-                      ? 'code-card json-editor'
-                      : 'code-card html-editor'
-                  }
-                >
+                {/* =========================
+                    CODE WINDOW
+                ========================= */}
 
-                  <div className="code-toolbar">
-
+                <div className="code-window">
+                  <div className="code-window-header">
                     <div className="code-file-info">
+                      <div className="window-dots">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
 
-                      <span className="window-dots">
-
-                        <i />
-                        <i />
-                        <i />
-
-                      </span>
-
-                      <span className="file-type">
-                        {activeView ===
+                      <span className="code-type">
+                        {activeTab ===
                         'json'
                           ? 'JSON'
                           : 'HTML'}
                       </span>
 
-                      <span className="file-name-code">
-
-                        {activeView ===
+                      <span className="code-filename">
+                        {activeTab ===
                         'json'
-                          ? `${activeBlock.id}.json`
-                          : `${activeBlock.id}.html`}
-
+                          ? selectedBlock.jsonFile ||
+                            `${selectedBlock.name}.json`
+                          : selectedBlock.htmlFile ||
+                            `${selectedBlock.name}.html`}
                       </span>
-
                     </div>
 
                     <button
+                      type="button"
                       className="copy-button"
-                      onClick={() =>
-                        copyText(
-                          currentCode
-                        )
+                      onClick={
+                        copyContent
                       }
                     >
-                      {copied
-                        ? '✓ Copied'
-                        : 'Copy'}
+                      Copy
                     </button>
-
                   </div>
 
-                  <div className="code-editor">
-
-                    <pre className="code">
-                      {renderCode()}
+                  <div className="code-content">
+                    <pre>
+                      <code>
+                        {activeTab ===
+                        'json'
+                          ? jsonContent
+                          : htmlContent}
+                      </code>
                     </pre>
-
                   </div>
-
                 </div>
-
-                <div className="fields-panel">
-
-                  <div className="fields-header">
-
-                    <div>
-
-                      <h3>
-                        Detected Fields
-                      </h3>
-
-                      <p>
-                        Fields detected from
-                        the selected block
-                      </p>
-
-                    </div>
-
-                    <span className="field-count">
-                      {activeBlock.fields
-                        ?.length || 0}
-                    </span>
-
-                  </div>
-
-                  <div className="fields-grid">
-
-                    {activeBlock.fields?.map(
-                      (
-                        field,
-                        index
-                      ) => (
-                        <div
-                          className="field-card"
-                          key={`${field.name}-${index}`}
-                        >
-
-                          <div className="field-top">
-
-                            <strong>
-                              {field.name}
-                            </strong>
-
-                            <span>
-                              {field.component}
-                            </span>
-
-                          </div>
-
-                          <small>
-                            {field.label}
-                          </small>
-
-                        </div>
-                      )
-                    )}
-
-                  </div>
-
-                </div>
-
-              </div>
+              </>
             )}
-
-        </section>
-
-      </main>
-
+        </main>
+      </div>
     </div>
   );
 }
