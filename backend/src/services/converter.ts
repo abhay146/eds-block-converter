@@ -1,244 +1,666 @@
 import * as cheerio from 'cheerio';
 
-import type { Element } from 'domhandler';
+import {
+  createId,
+  createFieldLabel,
+  createFieldName,
+  generateXwalkConfig,
+  type DetectedBlock,
+  type XwalkField,
+} from './xwalk.js';
 
 /**
- * Convert Mammoth HTML into EDS-style HTML.
+ * =========================================================
+ * TYPES
+ * =========================================================
  */
-export function convertToEdsHtml(
-  html: string,
-): string {
-  const $ = cheerio.load(html);
 
-  $('table').each((_, table) => {
-    const converted = convertTableToBlock(
-      $,
-      table,
-    );
+export interface BlockFile {
+  name: string;
+  jsonFile: string;
+  htmlFile: string;
+  json: {
+    title: string;
+    id: string;
+    fields: XwalkField[];
+  };
+  html: string;
+}
 
-    $(table).replaceWith(converted);
-  });
-
-  return $('body').html() || '';
+export interface ConverterResult {
+  html: string;
+  detectedBlocks: DetectedBlock[];
+  blockFiles: BlockFile[];
+  xwalk: ReturnType<typeof generateXwalkConfig>;
+  messages: string[];
 }
 
 /**
- * Convert DOCX table into EDS block.
+ * =========================================================
+ * HELPER
+ * =========================================================
  */
-function convertTableToBlock(
+
+function normalizeText(value: string): string {
+  return value
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * =========================================================
+ * GET BLOCK TITLE
+ * =========================================================
+ */
+
+function getBlockTitle(
   $: cheerio.CheerioAPI,
-  table: Element,
+  block: cheerio.Cheerio<any>,
 ): string {
-  const rows = $(table)
-    .find('tr')
-    .toArray();
+  const firstRow = block.find('> div').first();
 
-  if (!rows.length) {
-    return $(table).toString();
+  const firstCell = firstRow.find('> div').first();
+
+  if (!firstCell.length) {
+    return '';
   }
 
-  if (isMetadataTable($, rows)) {
-    return convertMetadataTable($, rows);
+  return normalizeText(
+    firstCell.text(),
+  );
+}
+
+/**
+ * =========================================================
+ * CREATE BLOCK HTML
+ * =========================================================
+ */
+
+function createBlockHtml(
+  blockId: string,
+  blockHtml: string,
+): string {
+  return [
+    `<div class="${blockId}-wrapper">`,
+    blockHtml,
+    '</div>',
+  ].join('\n');
+}
+
+/**
+ * =========================================================
+ * CREATE FIELD
+ * =========================================================
+ */
+
+function createField(
+  component: string,
+  name: string,
+): XwalkField {
+  const fieldName = createFieldName(name);
+
+  const label = createFieldLabel(name);
+
+  if (component === 'reference') {
+    return {
+      component: 'reference',
+      name: fieldName,
+      label,
+      valueType: 'string',
+      multi: false,
+    };
   }
 
-  const blockRows = rows
-    .map((row) => {
-      const cells = $(row)
-        .find('th, td')
-        .toArray();
+  if (component === 'aem-content') {
+    return {
+      component: 'aem-content',
+      name: fieldName,
+      label,
+    };
+  }
 
-      if (!cells.length) {
-        return '';
+  if (component === 'richtext') {
+    return {
+      component: 'richtext',
+      valueType: 'string',
+      name: fieldName,
+      label,
+      raw: true,
+    };
+  }
+
+  return {
+    component: 'text',
+    valueType: 'string',
+    name: fieldName,
+    label,
+    value: '',
+  };
+}
+
+/**
+ * =========================================================
+ * DETECT FIELD TYPE
+ * =========================================================
+ */
+
+function detectFieldType(
+  text: string,
+): string {
+  const normalized = text
+    .toLowerCase()
+    .trim();
+
+  /**
+   * Reference
+   */
+
+  if (
+    normalized === 'reference' ||
+    normalized.includes('reference')
+  ) {
+    if (
+      normalized.includes('alt')
+    ) {
+      return 'text';
+    }
+
+    return 'reference';
+  }
+
+  /**
+   * AEM Content
+   */
+
+  if (
+    normalized === 'aem-content' ||
+    normalized === 'aem content' ||
+    normalized === 'link'
+  ) {
+    return 'aem-content';
+  }
+
+  /**
+   * Richtext
+   */
+
+  if (
+    normalized === 'richtext' ||
+    normalized === 'rich text' ||
+    normalized === 'content' ||
+    normalized === 'description'
+  ) {
+    return 'richtext';
+  }
+
+  /**
+   * Default
+   */
+
+  return 'text';
+}
+
+/**
+ * =========================================================
+ * GET FIELD NAME FROM CELL
+ * =========================================================
+ */
+
+function getFieldName(
+  text: string,
+): string {
+  const normalized = normalizeText(text);
+
+  if (!normalized) {
+    return '';
+  }
+
+  /**
+   * Keep known names.
+   */
+
+  if (
+    normalized.toLowerCase() ===
+    'referencealt'
+  ) {
+    return 'referenceAlt';
+  }
+
+  if (
+    normalized.toLowerCase() ===
+    'reference'
+  ) {
+    return 'reference';
+  }
+
+  if (
+    normalized.toLowerCase() ===
+    'aem-content'
+  ) {
+    return 'link';
+  }
+
+  if (
+    normalized.toLowerCase() ===
+    'richtext'
+  ) {
+    return 'richtext';
+  }
+
+  return createFieldName(
+    normalized,
+  );
+}
+
+/**
+ * =========================================================
+ * REMOVE DUPLICATE FIELDS
+ * =========================================================
+ */
+
+function removeDuplicateFields(
+  fields: XwalkField[],
+): XwalkField[] {
+  const seen = new Set<string>();
+
+  return fields.filter(
+    (field: XwalkField) => {
+      if (
+        seen.has(
+          field.name,
+        )
+      ) {
+        return false;
       }
 
-      const cellHtml = cells
-        .map((cell) => {
-          const content = cleanCell(
-            $,
-            $(cell).html() || '',
+      seen.add(
+        field.name,
+      );
+
+      return true;
+    },
+  );
+}
+
+/**
+ * =========================================================
+ * DETECT FIELDS FROM BLOCK
+ * =========================================================
+ */
+
+function detectFields(
+  $: cheerio.CheerioAPI,
+  block: cheerio.Cheerio<any>,
+): XwalkField[] {
+  const fields: XwalkField[] = [];
+
+  const rows = block.find(
+    '> div',
+  );
+
+  /**
+   * First row = Block title.
+   * Remaining rows = fields.
+   */
+
+  rows.each(
+    (
+      rowIndex: number,
+      rowElement: any,
+    ) => {
+      if (
+        rowIndex === 0
+      ) {
+        return;
+      }
+
+      const row = $(rowElement);
+
+      const cells = row.find(
+        '> div',
+      );
+
+      cells.each(
+        (
+          _: number,
+          cellElement: any,
+        ) => {
+          const cell = $(cellElement);
+
+          /**
+           * Each paragraph can represent
+           * a field definition.
+           */
+
+          const paragraphs =
+            cell.find('p');
+
+          if (
+            paragraphs.length > 0
+          ) {
+            paragraphs.each(
+              (
+                __: number,
+                paragraphElement: any,
+              ) => {
+                const text =
+                  normalizeText(
+                    $(paragraphElement)
+                      .text(),
+                  );
+
+                if (
+                  !text
+                ) {
+                  return;
+                }
+
+                const fieldName =
+                  getFieldName(
+                    text,
+                  );
+
+                if (
+                  !fieldName
+                ) {
+                  return;
+                }
+
+                const component =
+                  detectFieldType(
+                    text,
+                  );
+
+                /**
+                 * Special handling
+                 * for referenceAlt.
+                 */
+
+                if (
+                  fieldName ===
+                  'referenceAlt'
+                ) {
+                  fields.push({
+                    component: 'text',
+                    valueType: 'string',
+                    name: 'referenceAlt',
+                    label: 'Reference Alt',
+                    value: '',
+                  });
+
+                  return;
+                }
+
+                fields.push(
+                  createField(
+                    component,
+                    fieldName,
+                  ),
+                );
+              },
+            );
+
+            return;
+          }
+
+          /**
+           * If no paragraphs,
+           * use cell text.
+           */
+
+          const text =
+            normalizeText(
+              cell.text(),
+            );
+
+          if (
+            !text
+          ) {
+            return;
+          }
+
+          const fieldName =
+            getFieldName(
+              text,
+            );
+
+          if (
+            !fieldName
+          ) {
+            return;
+          }
+
+          const component =
+            detectFieldType(
+              text,
+            );
+
+          fields.push(
+            createField(
+              component,
+              fieldName,
+            ),
           );
+        },
+      );
+    },
+  );
 
-          return `<div>${content}</div>`;
-        })
-        .join('\n    ');
-
-      return [
-        '<div>',
-        `    ${cellHtml}`,
-        '</div>',
-      ].join('\n');
-    })
-    .filter(Boolean);
-
-  if (!blockRows.length) {
-    return '';
-  }
-
-  return [
-    '<div class="cards">',
-    ...blockRows,
-    '</div>',
-  ].join('\n');
-}
-
-/**
- * Detect metadata tables.
- */
-function isMetadataTable(
-  $: cheerio.CheerioAPI,
-  rows: Element[],
-): boolean {
-  const text = rows
-    .slice(0, 2)
-    .map((row) => $(row).text())
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-
-  return (
-    text.includes('section metadata') ||
-    text === 'metadata' ||
-    text.startsWith('metadata ')
+  return removeDuplicateFields(
+    fields,
   );
 }
 
 /**
- * Convert metadata table.
+ * =========================================================
+ * DETECT BLOCKS
+ * =========================================================
  */
-function convertMetadataTable(
-  $: cheerio.CheerioAPI,
-  rows: Element[],
-): string {
-  const values: string[] = [];
 
-  for (const row of rows) {
-    const cells = $(row)
-      .find('th, td')
-      .toArray();
+export function detectBlocks(
+  html: string,
+): DetectedBlock[] {
+  const $ = cheerio.load(
+    html,
+  );
 
-    if (cells.length < 2) {
-      continue;
-    }
+  const detectedBlocks:
+    DetectedBlock[] = [];
 
-    const key = $(cells[0])
-      .text()
-      .replace(/\s+/g, ' ')
-      .trim();
+  /**
+   * Franklin block tables
+   */
 
-    const value = $(cells[1])
-      .text()
-      .replace(/\s+/g, ' ')
-      .trim();
+  $('table').each(
+    (
+      _: number,
+      tableElement: any,
+    ) => {
+      const table =
+        $(tableElement);
 
-    if (
-      key &&
-      value &&
-      key.toLowerCase() !== 'section metadata' &&
-      key.toLowerCase() !== 'metadata'
-    ) {
-      values.push(
-        `<div>${escapeHtml(key)}</div>`,
-        `<div>${escapeHtml(value)}</div>`,
-      );
-    }
-  }
+      const rawTitle =
+        getBlockTitle(
+          $,
+          table,
+        );
 
-  if (!values.length) {
-    return '';
-  }
+      if (
+        !rawTitle
+      ) {
+        return;
+      }
 
-  return [
-    '<div class="metadata">',
-    ...values,
-    '</div>',
-  ].join('\n');
+      /**
+       * Ignore metadata table.
+       */
+
+      if (
+        rawTitle
+          .toLowerCase()
+          .includes('metadata')
+      ) {
+        return;
+      }
+
+      const blockId =
+        createId(
+          rawTitle,
+        );
+
+      if (
+        !blockId
+      ) {
+        return;
+      }
+
+      const fields =
+        detectFields(
+          $,
+          table,
+        );
+
+      /**
+       * Get generated HTML.
+       */
+
+      const tableHtml =
+        $.html(
+          table,
+        );
+
+      const htmlOutput =
+        createBlockHtml(
+          blockId,
+          tableHtml,
+        );
+
+      detectedBlocks.push({
+        title: rawTitle,
+        id: blockId,
+        fields,
+        html: htmlOutput,
+      });
+    },
+  );
+
+  return detectedBlocks;
 }
 
 /**
- * Clean table cell.
+ * =========================================================
+ * CREATE INDIVIDUAL BLOCK FILES
+ * =========================================================
+ *
+ * IMPORTANT:
+ *
+ * blockFiles contains ONLY
+ * individual block JSON.
+ *
+ * Complete XWalk config:
+ *
+ * definitions
+ * models
+ * filters
+ *
+ * stays inside result.xwalk
+ *
  */
-function cleanCell(
-  $: cheerio.CheerioAPI,
-  cell: string,
-): string {
-  const $cell = cheerio.load(cell);
 
-  /**
-   * Replace images.
-   */
-  $cell('img').each((_, img) => {
-    const alt =
-      $cell(img)
-        .attr('alt')
-        ?.trim() || '';
+export function createBlockFiles(
+  blocks: DetectedBlock[],
+): BlockFile[] {
+  return blocks.map(
+    (
+      block: DetectedBlock,
+    ): BlockFile => {
+      const blockId =
+        createId(
+          block.title,
+        );
 
-    if (alt) {
-      $cell(img).replaceWith(
-        `[IMAGE:${escapeText(alt)}]`,
-      );
-    } else {
-      $cell(img).replaceWith('[IMAGE]');
-    }
-  });
+      return {
+        name: blockId,
 
-  /**
-   * Remove empty paragraphs.
-   */
-  $cell('p').each((_, p) => {
-    const text = $cell(p)
-      .text()
-      .trim();
+        jsonFile:
+          `${blockId}.json`,
 
-    const hasImage =
-      text.includes('[IMAGE');
+        htmlFile:
+          `${blockId}.html`,
 
-    if (!text && !hasImage) {
-      $cell(p).remove();
-    }
-  });
+        json: {
+          title: block.title
+            .replace(
+              /\s*\([^)]*\)\s*$/,
+              '',
+            )
+            .trim(),
 
-  /**
-   * Remove empty divs.
-   */
-  $cell('div').each((_, div) => {
-    const text = $cell(div)
-      .text()
-      .trim();
+          id: blockId,
 
-    if (
-      !text &&
-      !$cell(div).find('img').length
-    ) {
-      $cell(div).remove();
-    }
-  });
+          fields:
+            block.fields,
+        },
 
-  return (
-    $cell
-      .root()
-      .html()
-      ?.trim() || ''
+        html:
+          block.html || '',
+      };
+    },
   );
 }
 
 /**
- * Escape HTML.
+ * =========================================================
+ * MAIN CONVERTER
+ * =========================================================
  */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
 
-/**
- * Escape image marker text.
- */
-function escapeText(value: string): string {
-  return value
-    .replace(/[\[\]]/g, '')
-    .trim();
+export function convertToEdsHtml(
+  html: string,
+): ConverterResult {
+  /**
+   * Detect blocks.
+   */
+
+  const detectedBlocks =
+    detectBlocks(
+      html,
+    );
+
+  /**
+   * Create separate block files.
+   */
+
+  const blockFiles =
+    createBlockFiles(
+      detectedBlocks,
+    );
+
+  /**
+   * Generate complete XWalk config.
+   *
+   * This contains:
+   *
+   * definitions
+   * models
+   * filters
+   */
+
+  const xwalk =
+    generateXwalkConfig(
+      detectedBlocks,
+    );
+
+  return {
+    html,
+
+    detectedBlocks,
+
+    blockFiles,
+
+    xwalk,
+
+    messages: [],
+  };
 }

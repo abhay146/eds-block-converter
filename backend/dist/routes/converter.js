@@ -7,15 +7,6 @@ import { generateXwalkConfig, createId, } from '../services/xwalk.js';
  * BASIC HELPERS
  * =========================================================
  */
-/**
- * Create readable label.
- *
- * referenceAlt
- * -> Reference Alt
- *
- * videoUrl
- * -> Video Url
- */
 function createLabel(value) {
     return value
         .trim()
@@ -25,15 +16,6 @@ function createLabel(value) {
         .trim()
         .replace(/\b\w/g, (char) => char.toUpperCase());
 }
-/**
- * Normalize only for comparison.
- *
- * referenceAlt
- * reference alt
- * reference-alt
- *
- * -> referencealt
- */
 function normalizeFieldName(value) {
     return value
         .trim()
@@ -41,9 +23,6 @@ function normalizeFieldName(value) {
         .replace(/\s+/g, '')
         .replace(/[-_]/g, '');
 }
-/**
- * Clean text.
- */
 function cleanFieldText(value) {
     return value
         .replace(/\u00a0/g, ' ')
@@ -52,7 +31,31 @@ function cleanFieldText(value) {
 }
 /**
  * =========================================================
- * KNOWN FIELD DETECTION
+ * CONVERSION RESULT -> HTML STRING
+ * =========================================================
+ */
+function getEdsHtml(conversionResult) {
+    if (typeof conversionResult === 'string') {
+        return conversionResult;
+    }
+    if (conversionResult &&
+        typeof conversionResult === 'object') {
+        const result = conversionResult;
+        if (typeof result.html === 'string') {
+            return result.html;
+        }
+        if (typeof result.edsHtml === 'string') {
+            return result.edsHtml;
+        }
+        if (typeof result.value === 'string') {
+            return result.value;
+        }
+    }
+    return '';
+}
+/**
+ * =========================================================
+ * KNOWN FIELDS
  * =========================================================
  */
 function isExactKnownField(value) {
@@ -76,25 +79,8 @@ function isExactKnownField(value) {
 }
 /**
  * =========================================================
- * CREATE FIELD FROM DOCX VALUE
+ * CREATE FIELD
  * =========================================================
- *
- * IMPORTANT MAPPING:
- *
- * reference
- * -> reference
- *
- * referenceAlt
- * -> referenceAlt
- *
- * richtext
- * -> richtext + raw true
- *
- * text
- * -> text + value ""
- *
- * aem-content
- * -> aem-content + link
  */
 function createFieldFromName(rawName, rawLabel) {
     const original = cleanFieldText(rawName);
@@ -107,13 +93,7 @@ function createFieldFromName(rawName, rawLabel) {
         cleanFieldText(rawLabel)
         ? cleanFieldText(rawLabel)
         : defaultLabel;
-    /**
-     * =====================================================
-     * REFERENCE
-     * =====================================================
-     */
-    if (normalized ===
-        'reference') {
+    if (normalized === 'reference') {
         return {
             component: 'reference',
             name: 'reference',
@@ -122,21 +102,7 @@ function createFieldFromName(rawName, rawLabel) {
             multi: false,
         };
     }
-    /**
-     * =====================================================
-     * REFERENCE ALT
-     *
-     * IMPORTANT:
-     *
-     * referenceAlt
-     * MUST remain
-     * referenceAlt
-     *
-     * NOT imageAlt
-     * =====================================================
-     */
-    if (normalized ===
-        'referencealt') {
+    if (normalized === 'referencealt') {
         return {
             component: 'text',
             valueType: 'string',
@@ -145,13 +111,7 @@ function createFieldFromName(rawName, rawLabel) {
             value: '',
         };
     }
-    /**
-     * =====================================================
-     * IMAGE
-     * =====================================================
-     */
-    if (normalized ===
-        'image') {
+    if (normalized === 'image') {
         return {
             component: 'reference',
             name: 'image',
@@ -160,13 +120,7 @@ function createFieldFromName(rawName, rawLabel) {
             multi: false,
         };
     }
-    /**
-     * =====================================================
-     * IMAGE ALT
-     * =====================================================
-     */
-    if (normalized ===
-        'imagealt') {
+    if (normalized === 'imagealt') {
         return {
             component: 'text',
             valueType: 'string',
@@ -175,13 +129,7 @@ function createFieldFromName(rawName, rawLabel) {
             value: '',
         };
     }
-    /**
-     * =====================================================
-     * THUMBNAIL IMAGE ALT
-     * =====================================================
-     */
-    if (normalized ===
-        'thumbnailimagealt') {
+    if (normalized === 'thumbnailimagealt') {
         return {
             component: 'text',
             valueType: 'string',
@@ -190,13 +138,7 @@ function createFieldFromName(rawName, rawLabel) {
             value: '',
         };
     }
-    /**
-     * =====================================================
-     * VIDEO URL
-     * =====================================================
-     */
-    if (normalized ===
-        'videourl') {
+    if (normalized === 'videourl') {
         return {
             component: 'text',
             valueType: 'string',
@@ -205,13 +147,7 @@ function createFieldFromName(rawName, rawLabel) {
             value: '',
         };
     }
-    /**
-     * =====================================================
-     * VIDEO
-     * =====================================================
-     */
-    if (normalized ===
-        'video') {
+    if (normalized === 'video') {
         return {
             component: 'text',
             valueType: 'string',
@@ -220,27 +156,7 @@ function createFieldFromName(rawName, rawLabel) {
             value: '',
         };
     }
-    /**
-     * =====================================================
-     * TEXT
-     *
-     * DOCX:
-     *
-     * text
-     *
-     * OUTPUT:
-     *
-     * {
-     *   component: "text",
-     *   valueType: "string",
-     *   name: "text",
-     *   label: "Text",
-     *   value: ""
-     * }
-     * =====================================================
-     */
-    if (normalized ===
-        'text') {
+    if (normalized === 'text') {
         return {
             component: 'text',
             valueType: 'string',
@@ -249,27 +165,7 @@ function createFieldFromName(rawName, rawLabel) {
             value: '',
         };
     }
-    /**
-     * =====================================================
-     * RICHTEXT
-     *
-     * DOCX:
-     *
-     * richtext
-     *
-     * OUTPUT:
-     *
-     * {
-     *   component: "richtext",
-     *   valueType: "string",
-     *   name: "richtext",
-     *   label: "Richtext",
-     *   raw: true
-     * }
-     * =====================================================
-     */
-    if (normalized ===
-        'richtext') {
+    if (normalized === 'richtext') {
         return {
             component: 'richtext',
             valueType: 'string',
@@ -278,13 +174,7 @@ function createFieldFromName(rawName, rawLabel) {
             raw: true,
         };
     }
-    /**
-     * =====================================================
-     * DESCRIPTION
-     * =====================================================
-     */
-    if (normalized ===
-        'description') {
+    if (normalized === 'description') {
         return {
             component: 'richtext',
             valueType: 'string',
@@ -293,13 +183,7 @@ function createFieldFromName(rawName, rawLabel) {
             raw: true,
         };
     }
-    /**
-     * =====================================================
-     * TITLE
-     * =====================================================
-     */
-    if (normalized ===
-        'title') {
+    if (normalized === 'title') {
         return {
             component: 'text',
             valueType: 'string',
@@ -308,51 +192,21 @@ function createFieldFromName(rawName, rawLabel) {
             value: '',
         };
     }
-    /**
-     * =====================================================
-     * AEM-CONTENT
-     *
-     * DOCX:
-     *
-     * aem-content
-     *
-     * OUTPUT:
-     *
-     * {
-     *   component: "aem-content",
-     *   name: "link",
-     *   label: "Link"
-     * }
-     * =====================================================
-     */
-    if (normalized ===
-        'aemcontent') {
+    if (normalized === 'aemcontent') {
         return {
             component: 'aem-content',
             name: 'link',
             label: 'Link',
         };
     }
-    /**
-     * =====================================================
-     * LINK
-     * =====================================================
-     */
-    if (normalized ===
-        'link') {
+    if (normalized === 'link') {
         return {
             component: 'aem-content',
             name: 'link',
             label,
         };
     }
-    /**
-     * =====================================================
-     * URL
-     * =====================================================
-     */
-    if (normalized ===
-        'url') {
+    if (normalized === 'url') {
         return {
             component: 'text',
             valueType: 'string',
@@ -361,11 +215,6 @@ function createFieldFromName(rawName, rawLabel) {
             value: '',
         };
     }
-    /**
-     * =====================================================
-     * UNKNOWN FIELD
-     * =====================================================
-     */
     return {
         component: 'text',
         valueType: 'string',
@@ -397,172 +246,58 @@ function uniqueFields(fields) {
  * DETECT FIELDS FROM TABLE
  * =========================================================
  */
-function detectTableFields(blockHtml) {
-    const $ = cheerio.load(blockHtml);
+function detectTableFields(table) {
     const fields = [];
-    $('table').each((_tableIndex, table) => {
-        $(table)
-            .find('tr')
-            .each((_rowIndex, row) => {
-            const cells = $(row)
-                .find('th, td')
+    const rows = table
+        .find('tr')
+        .toArray();
+    /**
+     * First row is block title.
+     * Start from second row.
+     */
+    rows
+        .slice(1)
+        .forEach((row) => {
+        const cells = table
+            .find(row)
+            .children('th, td')
+            .toArray();
+        for (const cell of cells) {
+            const elements = table
+                .find(cell)
+                .find('p, h1, h2, h3, h4, h5, h6')
                 .toArray();
-            for (const cell of cells) {
-                /**
-                 * Get every paragraph separately.
-                 *
-                 * Example:
-                 *
-                 * reference
-                 * referenceAlt
-                 */
-                const elements = $(cell)
-                    .find('p, h1, h2, h3, h4, h5, h6')
-                    .toArray();
-                if (elements.length) {
-                    for (const element of elements) {
-                        const text = cleanFieldText($(element)
-                            .text());
-                        if (!text ||
-                            !isExactKnownField(text)) {
-                            continue;
-                        }
-                        const field = createFieldFromName(text);
-                        if (field) {
-                            fields.push(field);
-                        }
-                    }
+            for (const element of elements) {
+                const text = cleanFieldText(table
+                    .find(element)
+                    .text());
+                if (!text) {
                     continue;
                 }
-                const cellText = $(cell)
-                    .text();
-                const values = cellText
-                    .split(/\r?\n/)
-                    .map((value) => cleanFieldText(value))
-                    .filter(Boolean);
-                for (const value of values) {
-                    if (!isExactKnownField(value)) {
-                        continue;
-                    }
-                    const field = createFieldFromName(value);
-                    if (field) {
-                        fields.push(field);
-                    }
+                if (!isExactKnownField(text)) {
+                    continue;
+                }
+                const field = createFieldFromName(text);
+                if (field) {
+                    fields.push(field);
                 }
             }
-        });
-    });
-    return uniqueFields(fields);
-}
-/**
- * =========================================================
- * DETECT FIELDS FROM PARAGRAPHS
- * =========================================================
- *
- * This is especially important because
- * convertToEdsHtml converts tables into DIVs.
- */
-function detectFieldsFromParagraphs(blockHtml) {
-    const $ = cheerio.load(blockHtml);
-    const fields = [];
-    $('p, h1, h2, h3, h4, h5, h6').each((_index, element) => {
-        const text = cleanFieldText($(element)
-            .text());
-        if (!text) {
-            return;
-        }
-        /**
-         * Normal paragraph content
-         * must not become a field.
-         */
-        if (!isExactKnownField(text)) {
-            return;
-        }
-        const field = createFieldFromName(text);
-        if (field) {
-            fields.push(field);
         }
     });
     return uniqueFields(fields);
 }
 /**
  * =========================================================
- * DETECT FIELDS FROM RAW TEXT
- * =========================================================
- *
- * Fallback for DOCX structures where
- * multiple field names appear in one DIV.
- */
-function detectFieldsFromRawText(blockHtml) {
-    const $ = cheerio.load(blockHtml);
-    const fields = [];
-    /**
-     * Check all elements individually
-     * so text from separate paragraphs
-     * does not get merged incorrectly.
-     */
-    const candidates = [
-        'referenceAlt',
-        'thumbnailImageAlt',
-        'imageAlt',
-        'aem-content',
-        'aem content',
-        'richtext',
-        'Video url',
-        'video url',
-        'reference',
-        'image',
-        'video',
-        'text',
-        'description',
-        'title',
-        'link',
-        'url',
-    ];
-    const elements = $('p, h1, h2, h3, h4, h5, h6, div')
-        .toArray();
-    for (const element of elements) {
-        /**
-         * Only use direct text when possible.
-         */
-        const text = cleanFieldText($(element)
-            .clone()
-            .children()
-            .remove()
-            .end()
-            .text());
-        if (!text) {
-            continue;
-        }
-        for (const candidate of candidates) {
-            const candidateNormalized = normalizeFieldName(candidate);
-            const textNormalized = normalizeFieldName(text);
-            if (textNormalized !==
-                candidateNormalized) {
-                continue;
-            }
-            const field = createFieldFromName(candidate);
-            if (field) {
-                fields.push(field);
-            }
-            break;
-        }
-    }
-    return uniqueFields(fields);
-}
-/**
- * =========================================================
- * GENERIC CONTENT FALLBACK
+ * FALLBACK FIELD DETECTION
  * =========================================================
  */
-function detectFallbackFields(blockHtml) {
-    const $ = cheerio.load(blockHtml);
+function detectFallbackFields(html) {
+    const $ = cheerio.load(html);
     const fields = [];
     const hasHeading = $('h1, h2, h3, h4, h5, h6').length > 0;
     const hasParagraph = $('p').length > 0;
-    const hasImage = blockHtml.includes('[IMAGE');
+    const hasImage = $('img').length > 0;
     const hasLink = $('a').length > 0;
-    const hasList = $('ul, ol').length > 0;
     if (hasHeading) {
         fields.push({
             component: 'text',
@@ -572,8 +307,7 @@ function detectFallbackFields(blockHtml) {
             value: '',
         });
     }
-    if (hasParagraph ||
-        hasList) {
+    if (hasParagraph) {
         fields.push({
             component: 'richtext',
             name: 'richtext',
@@ -602,74 +336,16 @@ function detectFallbackFields(blockHtml) {
 }
 /**
  * =========================================================
- * MAIN FIELD DETECTION
- * =========================================================
- */
-function detectFields(blockHtml) {
-    const tableFields = detectTableFields(blockHtml);
-    const paragraphFields = detectFieldsFromParagraphs(blockHtml);
-    const rawTextFields = detectFieldsFromRawText(blockHtml);
-    const detected = uniqueFields([
-        ...tableFields,
-        ...paragraphFields,
-        ...rawTextFields,
-    ]);
-    if (detected.length > 0) {
-        return detected;
-    }
-    return detectFallbackFields(blockHtml);
-}
-/**
- * =========================================================
- * BLOCK TITLE
- * =========================================================
- */
-function getBlockTitle(block) {
-    const firstRow = block
-        .children()
-        .first();
-    if (!firstRow.length) {
-        return '';
-    }
-    const firstText = firstRow
-        .find('p, h1, h2, h3, h4, h5, h6')
-        .first()
-        .text()
-        .replace(/\[IMAGE(?::[^\]]+)?\]/gi, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    /**
-     * Field name should not become title.
-     */
-    if (firstText &&
-        !isExactKnownField(firstText)) {
-        return firstText;
-    }
-    const fallbackText = firstRow
-        .text()
-        .replace(/\[IMAGE(?::[^\]]+)?\]/gi, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (fallbackText &&
-        !isExactKnownField(fallbackText)) {
-        return fallbackText;
-    }
-    return '';
-}
-/**
- * =========================================================
  * PARSE BLOCK TITLE + STYLES
  * =========================================================
  *
  * Hero (hero-v1)
  *
- * title = Hero
- * styles = ["hero-v1"]
+ * title: Hero
+ * styles: ["hero-v1"]
  */
 function parseBlockTitle(value) {
-    const text = value
-        .replace(/\s+/g, ' ')
-        .trim();
+    const text = cleanFieldText(value);
     const match = text.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
     if (!match) {
         return {
@@ -677,8 +353,7 @@ function parseBlockTitle(value) {
             styles: [],
         };
     }
-    const title = match[1]
-        .trim();
+    const title = match[1].trim();
     const styles = match[2]
         .split(',')
         .map((style) => style.trim())
@@ -690,98 +365,148 @@ function parseBlockTitle(value) {
 }
 /**
  * =========================================================
- * BLOCK HTML
+ * GET TABLE BLOCK TITLE
  * =========================================================
  */
-function replaceBlockClass(html, id) {
-    return html.replace(/class=["']cards["']/i, `class="${id} block"`);
+function getTableBlockTitle(table) {
+    const firstRow = table
+        .find('tr')
+        .first();
+    if (!firstRow.length) {
+        return '';
+    }
+    const text = cleanFieldText(firstRow.text());
+    if (!text) {
+        return '';
+    }
+    return text;
 }
-function createEdsBlockHtml(originalHtml, id) {
-    const blockHtml = replaceBlockClass(originalHtml, id);
+/**
+ * =========================================================
+ * CREATE EDS BLOCK HTML
+ * =========================================================
+ */
+function createEdsBlockHtml(tableHtml, blockId) {
+    const $ = cheerio.load(tableHtml, null, false);
+    const table = $('table').first();
+    if (table.length) {
+        table.attr('class', `${blockId} block`);
+    }
+    const finalTableHtml = $.html();
     return [
-        `<div class="${id}-wrapper">`,
-        blockHtml,
+        `<div class="${blockId}-wrapper">`,
+        finalTableHtml,
         '</div>',
     ].join('\n');
 }
 /**
  * =========================================================
- * DETECT BLOCKS
+ * DETECT BLOCKS FROM TABLES
  * =========================================================
  */
 function detectBlocks(html) {
     const blocks = [];
-    const $ = cheerio.load(html);
-    $('.cards').each((index, element) => {
-        const block = $(element);
-        /**
-         * Ignore metadata.
-         */
-        if (block.hasClass('metadata') ||
-            block.find('.metadata').length > 0) {
+    if (!html ||
+        !html.trim()) {
+        return blocks;
+    }
+    const $ = cheerio.load(html, null, false);
+    /**
+     * IMPORTANT:
+     *
+     * Each top-level table represents one block.
+     */
+    const tables = $('table').toArray();
+    tables.forEach((tableElement, index) => {
+        const table = $(tableElement);
+        const rawTitle = getTableBlockTitle(table);
+        if (!rawTitle) {
             return;
         }
-        /**
-         * Get title.
-         */
-        const rawTitle = getBlockTitle(block);
-        const safeTitle = rawTitle ||
-            `Block ${index + 1}`;
-        const { title, styles, } = parseBlockTitle(safeTitle);
+        const { title, styles, } = parseBlockTitle(rawTitle);
         if (!title) {
             return;
         }
-        /**
-         * Hero
-         * -> hero
-         */
         const id = createId(title) ||
             `block-${index + 1}`;
-        /**
-         * Original block HTML.
-         */
-        const originalHtml = $.html(block);
-        /**
-         * Detect fields.
-         */
-        const fields = detectFields(originalHtml);
-        /**
-         * Final EDS block HTML.
-         */
-        const finalHtml = createEdsBlockHtml(originalHtml, id);
+        const fields = detectTableFields(table);
+        const originalHtml = $.html(tableElement);
+        const blockHtml = createEdsBlockHtml(originalHtml, id);
         blocks.push({
             title,
             id,
             fields,
-            html: finalHtml,
+            html: blockHtml,
             _styles: styles,
         });
     });
     /**
-     * =======================================================
-     * GENERIC FALLBACK
-     * =======================================================
+     * Old .cards support.
      */
-    if (blocks.length === 0 &&
-        html.trim()) {
-        const rawTitle = $('h1, h2, h3, h4, h5, h6')
-            .first()
-            .text()
-            .replace(/\s+/g, ' ')
-            .trim() ||
-            'Content';
-        const { title, styles, } = parseBlockTitle(rawTitle);
-        const id = createId(title) ||
-            'content';
-        blocks.push({
-            title,
-            id,
-            fields: detectFields(html),
-            html,
-            _styles: styles,
+    if (blocks.length === 0) {
+        $('.cards').each((index, element) => {
+            const block = $(element);
+            const rawTitle = cleanFieldText(block
+                .find('h1, h2, h3, h4, h5, h6, p')
+                .first()
+                .text());
+            if (!rawTitle) {
+                return;
+            }
+            const { title, styles, } = parseBlockTitle(rawTitle);
+            const id = createId(title) ||
+                `block-${index + 1}`;
+            const originalHtml = $.html(element);
+            blocks.push({
+                title,
+                id,
+                fields: detectFallbackFields(originalHtml),
+                html: originalHtml,
+                _styles: styles,
+            });
         });
     }
     return blocks;
+}
+/**
+ * =========================================================
+ * FIND DEFINITION
+ * =========================================================
+ */
+function findDefinition(definitions, blockId) {
+    return definitions.find((item) => {
+        return (typeof item === 'object' &&
+            item !== null &&
+            'id' in item &&
+            item.id === blockId);
+    });
+}
+/**
+ * =========================================================
+ * FIND MODEL
+ * =========================================================
+ */
+function findModel(models, blockId) {
+    const model = models.find((item) => {
+        return (typeof item === 'object' &&
+            item !== null &&
+            'id' in item &&
+            item.id === blockId);
+    });
+    if (!model ||
+        typeof model !== 'object') {
+        return undefined;
+    }
+    const typedModel = model;
+    if (!typedModel.id) {
+        return undefined;
+    }
+    return {
+        id: typedModel.id,
+        fields: Array.isArray(typedModel.fields)
+            ? typedModel.fields
+            : [],
+    };
 }
 /**
  * =========================================================
@@ -803,7 +528,7 @@ export async function converterRoutes(app) {
                 });
             }
             /**
-             * Validate file extension.
+             * Validate extension.
              */
             const filename = file.filename
                 .toLowerCase();
@@ -815,7 +540,7 @@ export async function converterRoutes(app) {
                 });
             }
             /**
-             * Read DOCX.
+             * Read file.
              */
             const buffer = await file.toBuffer();
             /**
@@ -827,7 +552,18 @@ export async function converterRoutes(app) {
             /**
              * HTML -> EDS HTML.
              */
-            const edsHtml = convertToEdsHtml(result.value);
+            const conversionResult = await Promise.resolve(convertToEdsHtml(result.value));
+            /**
+             * Extract HTML string.
+             */
+            const edsHtml = getEdsHtml(conversionResult);
+            if (!edsHtml) {
+                return reply
+                    .code(500)
+                    .send({
+                    error: 'EDS HTML conversion returned empty content',
+                });
+            }
             /**
              * Detect blocks.
              */
@@ -837,23 +573,28 @@ export async function converterRoutes(app) {
              */
             const xwalk = generateXwalkConfig(blocks);
             /**
-             * Generate individual
-             * block JSON + HTML.
+             * Individual block files.
              */
-            const blockFiles = blocks.map((block) => ({
-                name: block.id,
-                jsonFile: `${block.id}.json`,
-                htmlFile: `${block.id}.html`,
-                json: {
-                    title: block.title,
-                    id: block.id,
-                    fields: block.fields,
-                },
-                html: block.html ||
-                    '',
-            }));
+            const blockFiles = blocks.map((block) => {
+                const definition = findDefinition(xwalk.definitions, block.id);
+                const model = findModel(xwalk.models, block.id);
+                return {
+                    name: block.id,
+                    jsonFile: `${block.id}.json`,
+                    htmlFile: `${block.id}.html`,
+                    json: {
+                        ...(definition || {
+                            title: block.title,
+                            id: block.id,
+                        }),
+                        fields: model?.fields ||
+                            block.fields,
+                    },
+                    html: block.html || '',
+                };
+            });
             /**
-             * Final response.
+             * Final API response.
              */
             return {
                 success: true,
