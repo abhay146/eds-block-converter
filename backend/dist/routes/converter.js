@@ -7,6 +7,12 @@ import { generateXwalkConfig, createId, } from '../services/xwalk.js';
  * BASIC HELPERS
  * =========================================================
  */
+function cleanFieldText(value) {
+    return value
+        .replace(/\u00a0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
 function createLabel(value) {
     return value
         .trim()
@@ -23,15 +29,9 @@ function normalizeFieldName(value) {
         .replace(/\s+/g, '')
         .replace(/[-_]/g, '');
 }
-function cleanFieldText(value) {
-    return value
-        .replace(/\u00a0/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
 /**
  * =========================================================
- * CONVERSION RESULT -> HTML STRING
+ * CONVERTER RESULT -> HTML STRING
  * =========================================================
  */
 function getEdsHtml(conversionResult) {
@@ -55,7 +55,70 @@ function getEdsHtml(conversionResult) {
 }
 /**
  * =========================================================
- * KNOWN FIELDS
+ * COLUMN PREFIX PARSER
+ * =========================================================
+ *
+ * Allowed:
+ *
+ * col1_text
+ * col2_richtext
+ * col3_reference
+ *
+ * Not allowed:
+ *
+ * col4_text
+ * col5_reference
+ *
+ */
+function parseColumnField(value) {
+    const match = value
+        .trim()
+        .match(/^col(\d+)_(.+)$/i);
+    if (!match) {
+        return null;
+    }
+    const column = Number(match[1]);
+    const fieldName = match[2]
+        .trim();
+    if (!fieldName) {
+        return null;
+    }
+    return {
+        column,
+        fieldName,
+    };
+}
+/**
+ * =========================================================
+ * VALIDATE COLUMN PREFIX
+ * =========================================================
+ *
+ * ONLY:
+ *
+ * col1_
+ * col2_
+ * col3_
+ *
+ */
+function validateColumnField(value, blockTitle) {
+    const parsed = parseColumnField(value);
+    if (!parsed) {
+        return null;
+    }
+    if (parsed.column < 1 ||
+        parsed.column > 3) {
+        return {
+            block: blockTitle,
+            field: value,
+            message: `Column "${value}" is not allowed. ` +
+                `Only col1_, col2_, and col3_ are allowed.`,
+        };
+    }
+    return null;
+}
+/**
+ * =========================================================
+ * KNOWN FIELD DETECTION
  * =========================================================
  */
 function isExactKnownField(value) {
@@ -74,25 +137,29 @@ function isExactKnownField(value) {
         'description',
         'title',
         'link',
+        'linktext',
+        'linktitle',
         'url',
     ].includes(normalized);
 }
 /**
  * =========================================================
- * CREATE FIELD
+ * CREATE NORMAL FIELD
  * =========================================================
  */
-function createFieldFromName(rawName, rawLabel) {
+function createNormalField(rawName, rawLabel) {
     const original = cleanFieldText(rawName);
     if (!original) {
         return null;
     }
     const normalized = normalizeFieldName(original);
-    const defaultLabel = createLabel(original);
     const label = rawLabel &&
         cleanFieldText(rawLabel)
         ? cleanFieldText(rawLabel)
-        : defaultLabel;
+        : createLabel(original);
+    /**
+     * REFERENCE
+     */
     if (normalized === 'reference') {
         return {
             component: 'reference',
@@ -102,15 +169,21 @@ function createFieldFromName(rawName, rawLabel) {
             multi: false,
         };
     }
+    /**
+     * REFERENCE ALT
+     */
     if (normalized === 'referencealt') {
         return {
             component: 'text',
-            valueType: 'string',
             name: 'referenceAlt',
             label,
+            valueType: 'string',
             value: '',
         };
     }
+    /**
+     * IMAGE
+     */
     if (normalized === 'image') {
         return {
             component: 'reference',
@@ -120,78 +193,105 @@ function createFieldFromName(rawName, rawLabel) {
             multi: false,
         };
     }
+    /**
+     * IMAGE ALT
+     */
     if (normalized === 'imagealt') {
         return {
             component: 'text',
-            valueType: 'string',
             name: 'imageAlt',
             label,
+            valueType: 'string',
             value: '',
         };
     }
+    /**
+     * THUMBNAIL IMAGE ALT
+     */
     if (normalized === 'thumbnailimagealt') {
         return {
             component: 'text',
-            valueType: 'string',
             name: 'thumbnailImageAlt',
             label,
+            valueType: 'string',
             value: '',
         };
     }
+    /**
+     * VIDEO URL
+     */
     if (normalized === 'videourl') {
         return {
             component: 'text',
-            valueType: 'string',
             name: 'videoUrl',
             label,
+            valueType: 'string',
             value: '',
         };
     }
+    /**
+     * VIDEO
+     */
     if (normalized === 'video') {
         return {
             component: 'text',
-            valueType: 'string',
             name: 'video',
             label,
+            valueType: 'string',
             value: '',
         };
     }
+    /**
+     * TEXT
+     */
     if (normalized === 'text') {
         return {
             component: 'text',
-            valueType: 'string',
             name: 'text',
             label,
+            valueType: 'string',
             value: '',
         };
     }
+    /**
+     * RICHTEXT
+     */
     if (normalized === 'richtext') {
         return {
             component: 'richtext',
-            valueType: 'string',
             name: 'richtext',
             label,
+            valueType: 'string',
             raw: true,
         };
     }
+    /**
+     * DESCRIPTION
+     */
     if (normalized === 'description') {
         return {
             component: 'richtext',
-            valueType: 'string',
             name: 'description',
             label,
+            valueType: 'string',
             raw: true,
         };
     }
+    /**
+     * TITLE
+     */
     if (normalized === 'title') {
         return {
             component: 'text',
-            valueType: 'string',
             name: 'title',
             label,
+            valueType: 'string',
             value: '',
         };
     }
+    /**
+     * AEM CONTENT
+     */
     if (normalized === 'aemcontent') {
         return {
             component: 'aem-content',
@@ -199,29 +299,315 @@ function createFieldFromName(rawName, rawLabel) {
             label: 'Link',
         };
     }
+    /**
+     * LINK
+     */
     if (normalized === 'link') {
         return {
             component: 'aem-content',
             name: 'link',
-            label,
+            label: 'Link',
         };
     }
-    if (normalized === 'url') {
+    /**
+     * LINK TEXT
+     */
+    if (normalized === 'linktext') {
         return {
             component: 'text',
+            name: 'linkText',
+            label: 'Text',
             valueType: 'string',
-            name: 'url',
-            label,
             value: '',
         };
     }
+    /**
+     * LINK TITLE
+     */
+    if (normalized === 'linktitle') {
+        return {
+            component: 'text',
+            name: 'linkTitle',
+            label: 'Title',
+            valueType: 'string',
+            value: '',
+        };
+    }
+    /**
+     * URL
+     */
+    if (normalized === 'url') {
+        return {
+            component: 'text',
+            name: 'url',
+            label,
+            valueType: 'string',
+            value: '',
+        };
+    }
+    /**
+     * UNKNOWN
+     */
     return {
         component: 'text',
-        valueType: 'string',
         name: createId(original),
         label,
+        valueType: 'string',
         value: '',
     };
+}
+/**
+ * =========================================================
+ * CREATE COLUMN FIELD
+ * =========================================================
+ *
+ * Examples:
+ *
+ * col1_reference
+ * col1_referenceAlt
+ * col1_richtext
+ * col1_text
+ *
+ * col2_link
+ * col2_linkText
+ * col2_linkTitle
+ *
+ */
+function createColumnField(column, rawFieldName) {
+    const fieldName = cleanFieldText(rawFieldName);
+    if (!fieldName) {
+        return null;
+    }
+    const normalized = normalizeFieldName(fieldName);
+    const prefix = `col${column}_`;
+    /**
+     * REFERENCE
+     *
+     * col1_reference
+     */
+    if (normalized === 'reference') {
+        return {
+            component: 'reference',
+            name: `${prefix}reference`,
+            label: 'Reference',
+            valueType: 'string',
+            multi: false,
+        };
+    }
+    /**
+     * REFERENCE ALT
+     *
+     * col1_referenceAlt
+     */
+    if (normalized === 'referencealt') {
+        return {
+            component: 'text',
+            name: `${prefix}referenceAlt`,
+            label: 'Reference Alt',
+            valueType: 'string',
+            value: '',
+        };
+    }
+    /**
+     * IMAGE
+     */
+    if (normalized === 'image') {
+        return {
+            component: 'reference',
+            name: `${prefix}image`,
+            label: 'Image',
+            valueType: 'string',
+            multi: false,
+        };
+    }
+    /**
+     * IMAGE ALT
+     */
+    if (normalized === 'imagealt') {
+        return {
+            component: 'text',
+            name: `${prefix}imageAlt`,
+            label: 'Image Alt',
+            valueType: 'string',
+            value: '',
+        };
+    }
+    /**
+     * RICHTEXT
+     *
+     * col1_richtext
+     */
+    if (normalized === 'richtext') {
+        return {
+            component: 'richtext',
+            name: `${prefix}richtext`,
+            label: 'Title and Description',
+            valueType: 'string',
+            raw: true,
+        };
+    }
+    /**
+     * TEXT
+     *
+     * IMPORTANT:
+     *
+     * Your requested mapping:
+     *
+     * col1_text
+     *
+     * ->
+     *
+     * {
+     *   component: "richtext",
+     *   name: "col1_text",
+     *   label: "Title and Description"
+     * }
+     */
+    if (normalized === 'text') {
+        return {
+            component: 'richtext',
+            name: `${prefix}text`,
+            label: 'Title and Description',
+            valueType: 'string',
+            raw: true,
+        };
+    }
+    /**
+     * DESCRIPTION
+     */
+    if (normalized === 'description') {
+        return {
+            component: 'richtext',
+            name: `${prefix}description`,
+            label: 'Title and Description',
+            valueType: 'string',
+            raw: true,
+        };
+    }
+    /**
+     * TITLE
+     */
+    if (normalized === 'title') {
+        return {
+            component: 'text',
+            name: `${prefix}title`,
+            label: 'Title',
+            valueType: 'string',
+            value: '',
+        };
+    }
+    /**
+     * AEM CONTENT
+     *
+     * col2_aem-content
+     *
+     * ->
+     *
+     * col2_link
+     */
+    if (normalized === 'aemcontent') {
+        return {
+            component: 'aem-content',
+            name: `${prefix}link`,
+            label: 'Link',
+        };
+    }
+    /**
+     * LINK
+     *
+     * col2_link
+     */
+    if (normalized === 'link') {
+        return {
+            component: 'aem-content',
+            name: `${prefix}link`,
+            label: 'Link',
+        };
+    }
+    /**
+     * LINK TEXT
+     *
+     * col2_linkText
+     */
+    if (normalized === 'linktext') {
+        return {
+            component: 'text',
+            name: `${prefix}linkText`,
+            label: 'Text',
+            valueType: 'string',
+            value: '',
+        };
+    }
+    /**
+     * LINK TITLE
+     *
+     * col2_linkTitle
+     */
+    if (normalized === 'linktitle') {
+        return {
+            component: 'text',
+            name: `${prefix}linkTitle`,
+            label: 'Title',
+            valueType: 'string',
+            value: '',
+        };
+    }
+    /**
+     * VIDEO
+     */
+    if (normalized === 'video') {
+        return {
+            component: 'text',
+            name: `${prefix}video`,
+            label: 'Video',
+            valueType: 'string',
+            value: '',
+        };
+    }
+    /**
+     * VIDEO URL
+     */
+    if (normalized === 'videourl') {
+        return {
+            component: 'text',
+            name: `${prefix}videoUrl`,
+            label: 'Video Url',
+            valueType: 'string',
+            value: '',
+        };
+    }
+    /**
+     * UNKNOWN COLUMN FIELD
+     */
+    return {
+        component: 'text',
+        name: `${prefix}${createId(fieldName)}`,
+        label: createLabel(fieldName),
+        valueType: 'string',
+        value: '',
+    };
+}
+/**
+ * =========================================================
+ * CREATE FIELD FROM NAME
+ * =========================================================
+ */
+function createFieldFromName(rawName) {
+    const original = cleanFieldText(rawName);
+    if (!original) {
+        return null;
+    }
+    /**
+     * CHECK COLUMN PREFIX
+     */
+    const columnField = parseColumnField(original);
+    if (columnField) {
+        return createColumnField(columnField.column, columnField.fieldName);
+    }
+    /**
+     * NORMAL FIELD
+     */
+    return createNormalField(original);
 }
 /**
  * =========================================================
@@ -243,43 +629,95 @@ function uniqueFields(fields) {
 }
 /**
  * =========================================================
+ * GET ALL FIELD VALUES FROM TABLE
+ * =========================================================
+ */
+function getTableFieldValues(tableHtml) {
+    const $ = cheerio.load(tableHtml);
+    const values = [];
+    $('th, td').each((_index, cell) => {
+        $(cell)
+            .find('p, h1, h2, h3, h4, h5, h6')
+            .each((_childIndex, element) => {
+            const value = cleanFieldText($(element).text());
+            if (value) {
+                values.push(value);
+            }
+        });
+    });
+    return values;
+}
+/**
+ * =========================================================
+ * VALIDATE BLOCK COLUMNS
+ * =========================================================
+ */
+function validateBlockColumns(blockHtml, blockTitle) {
+    const errors = [];
+    const values = getTableFieldValues(blockHtml);
+    for (const value of values) {
+        const error = validateColumnField(value, blockTitle);
+        if (error) {
+            errors.push(error);
+        }
+    }
+    return errors;
+}
+/**
+ * =========================================================
  * DETECT FIELDS FROM TABLE
  * =========================================================
  */
-function detectTableFields(table) {
+function detectTableFields(blockHtml) {
+    const $ = cheerio.load(blockHtml);
     const fields = [];
-    const rows = table
-        .find('tr')
-        .toArray();
-    /**
-     * First row is block title.
-     * Start from second row.
-     */
-    rows
-        .slice(1)
-        .forEach((row) => {
-        const cells = table
-            .find(row)
-            .children('th, td')
+    $('tr').each((_rowIndex, row) => {
+        const cells = $(row)
+            .find('th, td')
             .toArray();
         for (const cell of cells) {
-            const elements = table
-                .find(cell)
+            const values = [];
+            $(cell)
                 .find('p, h1, h2, h3, h4, h5, h6')
-                .toArray();
-            for (const element of elements) {
-                const text = cleanFieldText(table
-                    .find(element)
-                    .text());
-                if (!text) {
+                .each((_index, element) => {
+                const text = cleanFieldText($(element).text());
+                if (text) {
+                    values.push(text);
+                }
+            });
+            /**
+             * If there are no child
+             * paragraph/headings.
+             */
+            if (values.length === 0) {
+                const text = cleanFieldText($(cell).text());
+                if (text) {
+                    values.push(text);
+                }
+            }
+            /**
+             * Process values.
+             */
+            for (const value of values) {
+                const columnField = parseColumnField(value);
+                /**
+                 * Column field.
+                 */
+                if (columnField) {
+                    const field = createColumnField(columnField.column, columnField.fieldName);
+                    if (field) {
+                        fields.push(field);
+                    }
                     continue;
                 }
-                if (!isExactKnownField(text)) {
-                    continue;
-                }
-                const field = createFieldFromName(text);
-                if (field) {
-                    fields.push(field);
+                /**
+                 * Normal known field.
+                 */
+                if (isExactKnownField(value)) {
+                    const field = createNormalField(value);
+                    if (field) {
+                        fields.push(field);
+                    }
                 }
             }
         }
@@ -288,51 +726,23 @@ function detectTableFields(table) {
 }
 /**
  * =========================================================
- * FALLBACK FIELD DETECTION
+ * GET BLOCK TITLE
  * =========================================================
+ *
+ * First row of table:
+ *
+ * Hero (hero-v1)
+ *
  */
-function detectFallbackFields(html) {
-    const $ = cheerio.load(html);
-    const fields = [];
-    const hasHeading = $('h1, h2, h3, h4, h5, h6').length > 0;
-    const hasParagraph = $('p').length > 0;
-    const hasImage = $('img').length > 0;
-    const hasLink = $('a').length > 0;
-    if (hasHeading) {
-        fields.push({
-            component: 'text',
-            name: 'title',
-            label: 'Title',
-            valueType: 'string',
-            value: '',
-        });
+function getBlockTitle(tableHtml) {
+    const $ = cheerio.load(tableHtml);
+    const firstRow = $('tr')
+        .first();
+    if (!firstRow.length) {
+        return '';
     }
-    if (hasParagraph) {
-        fields.push({
-            component: 'richtext',
-            name: 'richtext',
-            label: 'Richtext',
-            valueType: 'string',
-            raw: true,
-        });
-    }
-    if (hasImage) {
-        fields.push({
-            component: 'reference',
-            name: 'image',
-            label: 'Image',
-            valueType: 'string',
-            multi: false,
-        });
-    }
-    if (hasLink) {
-        fields.push({
-            component: 'aem-content',
-            name: 'link',
-            label: 'Link',
-        });
-    }
-    return uniqueFields(fields);
+    const firstText = cleanFieldText(firstRow.text());
+    return firstText;
 }
 /**
  * =========================================================
@@ -341,11 +751,16 @@ function detectFallbackFields(html) {
  *
  * Hero (hero-v1)
  *
- * title: Hero
- * styles: ["hero-v1"]
+ * ->
+ *
+ * title = Hero
+ * styles = ["hero-v1"]
+ *
  */
 function parseBlockTitle(value) {
-    const text = cleanFieldText(value);
+    const text = value
+        .replace(/\s+/g, ' ')
+        .trim();
     const match = text.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
     if (!match) {
         return {
@@ -353,7 +768,8 @@ function parseBlockTitle(value) {
             styles: [],
         };
     }
-    const title = match[1].trim();
+    const title = match[1]
+        .trim();
     const styles = match[2]
         .split(',')
         .map((style) => style.trim())
@@ -365,112 +781,92 @@ function parseBlockTitle(value) {
 }
 /**
  * =========================================================
- * GET TABLE BLOCK TITLE
+ * CREATE BLOCK HTML
  * =========================================================
  */
-function getTableBlockTitle(table) {
-    const firstRow = table
-        .find('tr')
+function createEdsBlockHtml(tableHtml, id) {
+    const $ = cheerio.load(tableHtml);
+    const table = $('table')
         .first();
-    if (!firstRow.length) {
-        return '';
+    if (!table.length) {
+        return tableHtml;
     }
-    const text = cleanFieldText(firstRow.text());
-    if (!text) {
-        return '';
-    }
-    return text;
-}
-/**
- * =========================================================
- * CREATE EDS BLOCK HTML
- * =========================================================
- */
-function createEdsBlockHtml(tableHtml, blockId) {
-    const $ = cheerio.load(tableHtml, null, false);
-    const table = $('table').first();
-    if (table.length) {
-        table.attr('class', `${blockId} block`);
-    }
-    const finalTableHtml = $.html();
+    table.addClass(`${id} block`);
     return [
-        `<div class="${blockId}-wrapper">`,
-        finalTableHtml,
+        `<div class="${id}-wrapper">`,
+        $.html(table),
         '</div>',
     ].join('\n');
 }
 /**
  * =========================================================
- * DETECT BLOCKS FROM TABLES
+ * DETECT BLOCKS
  * =========================================================
+ *
+ * Every table is treated as one block.
+ *
  */
 function detectBlocks(html) {
     const blocks = [];
+    const errors = [];
     if (!html ||
         !html.trim()) {
-        return blocks;
+        return {
+            blocks,
+            errors,
+        };
     }
-    const $ = cheerio.load(html, null, false);
-    /**
-     * IMPORTANT:
-     *
-     * Each top-level table represents one block.
-     */
-    const tables = $('table').toArray();
-    tables.forEach((tableElement, index) => {
-        const table = $(tableElement);
-        const rawTitle = getTableBlockTitle(table);
+    const $ = cheerio.load(html);
+    $('table').each((index, element) => {
+        const tableHtml = $.html(element);
+        const rawTitle = getBlockTitle(tableHtml);
         if (!rawTitle) {
             return;
         }
+        /**
+         * Parse title and styles.
+         */
         const { title, styles, } = parseBlockTitle(rawTitle);
         if (!title) {
             return;
         }
+        /**
+         * Validate columns first.
+         */
+        const blockErrors = validateBlockColumns(tableHtml, title);
+        if (blockErrors.length > 0) {
+            errors.push(...blockErrors);
+            return;
+        }
+        /**
+         * Generate block ID.
+         */
         const id = createId(title) ||
             `block-${index + 1}`;
-        const fields = detectTableFields(table);
-        const originalHtml = $.html(tableElement);
-        const blockHtml = createEdsBlockHtml(originalHtml, id);
+        /**
+         * Detect fields.
+         */
+        const fields = detectTableFields(tableHtml);
+        /**
+         * Block HTML.
+         */
+        const finalHtml = createEdsBlockHtml(tableHtml, id);
         blocks.push({
             title,
             id,
             fields,
-            html: blockHtml,
+            html: finalHtml,
             _styles: styles,
         });
     });
-    /**
-     * Old .cards support.
-     */
-    if (blocks.length === 0) {
-        $('.cards').each((index, element) => {
-            const block = $(element);
-            const rawTitle = cleanFieldText(block
-                .find('h1, h2, h3, h4, h5, h6, p')
-                .first()
-                .text());
-            if (!rawTitle) {
-                return;
-            }
-            const { title, styles, } = parseBlockTitle(rawTitle);
-            const id = createId(title) ||
-                `block-${index + 1}`;
-            const originalHtml = $.html(element);
-            blocks.push({
-                title,
-                id,
-                fields: detectFallbackFields(originalHtml),
-                html: originalHtml,
-                _styles: styles,
-            });
-        });
-    }
-    return blocks;
+    return {
+        blocks,
+        errors,
+    };
 }
 /**
  * =========================================================
- * FIND DEFINITION
+ * FIND XWALK DEFINITION
  * =========================================================
  */
 function findDefinition(definitions, blockId) {
@@ -483,7 +879,7 @@ function findDefinition(definitions, blockId) {
 }
 /**
  * =========================================================
- * FIND MODEL
+ * FIND XWALK MODEL
  * =========================================================
  */
 function findModel(models, blockId) {
@@ -510,20 +906,21 @@ function findModel(models, blockId) {
 }
 /**
  * =========================================================
- * DOCX CONVERSION ROUTE
+ * ROUTE
  * =========================================================
  */
 export async function converterRoutes(app) {
     app.post('/convert', async (request, reply) => {
         try {
             /**
-             * Upload DOCX.
+             * Get file.
              */
             const file = await request.file();
             if (!file) {
                 return reply
                     .code(400)
                     .send({
+                    success: false,
                     error: 'No DOCX file uploaded',
                 });
             }
@@ -536,40 +933,58 @@ export async function converterRoutes(app) {
                 return reply
                     .code(400)
                     .send({
+                    success: false,
                     error: 'Only DOCX files are supported',
                 });
             }
             /**
-             * Read file.
+             * Read DOCX.
              */
             const buffer = await file.toBuffer();
             /**
              * DOCX -> HTML.
              */
-            const result = await mammoth.convertToHtml({
+            const mammothResult = await mammoth.convertToHtml({
                 buffer,
             });
             /**
              * HTML -> EDS HTML.
              */
-            const conversionResult = await Promise.resolve(convertToEdsHtml(result.value));
+            const conversionResult = convertToEdsHtml(mammothResult.value);
             /**
-             * Extract HTML string.
+             * Extract actual HTML.
              */
             const edsHtml = getEdsHtml(conversionResult);
             if (!edsHtml) {
                 return reply
                     .code(500)
                     .send({
+                    success: false,
                     error: 'EDS HTML conversion returned empty content',
                 });
             }
             /**
              * Detect blocks.
              */
-            const blocks = detectBlocks(edsHtml);
+            const detection = detectBlocks(edsHtml);
+            const blocks = detection.blocks;
             /**
-             * Generate XWalk config.
+             * IMPORTANT:
+             *
+             * If col4_, col5_, etc. exists,
+             * return validation error.
+             */
+            if (detection.errors.length > 0) {
+                return reply
+                    .code(400)
+                    .send({
+                    success: false,
+                    error: 'Invalid column configuration',
+                    validationErrors: detection.errors,
+                });
+            }
+            /**
+             * Generate XWalk.
              */
             const xwalk = generateXwalkConfig(blocks);
             /**
@@ -590,11 +1005,12 @@ export async function converterRoutes(app) {
                         fields: model?.fields ||
                             block.fields,
                     },
-                    html: block.html || '',
+                    html: block.html ||
+                        '',
                 };
             });
             /**
-             * Final API response.
+             * Final response.
              */
             return {
                 success: true,
@@ -603,7 +1019,7 @@ export async function converterRoutes(app) {
                 detectedBlocks: blocks,
                 blockFiles,
                 xwalk,
-                messages: result.messages,
+                messages: mammothResult.messages,
             };
         }
         catch (error) {
@@ -611,6 +1027,7 @@ export async function converterRoutes(app) {
             return reply
                 .code(500)
                 .send({
+                success: false,
                 error: 'Failed to convert DOCX file',
             });
         }
