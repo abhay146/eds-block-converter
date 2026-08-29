@@ -17,7 +17,7 @@ function createLabel(value) {
     return value
         .trim()
         .replace(/([a-z])([A-Z])/g, '$1 $2')
-        .replace(/[-_]+/g, ' ')
+        .replace(/[_-]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
         .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -31,7 +31,7 @@ function normalizeFieldName(value) {
 }
 /**
  * =========================================================
- * CONVERTER RESULT -> HTML STRING
+ * GET EDS HTML
  * =========================================================
  */
 function getEdsHtml(conversionResult) {
@@ -53,561 +53,364 @@ function getEdsHtml(conversionResult) {
     }
     return '';
 }
-/**
- * =========================================================
- * COLUMN PREFIX PARSER
- * =========================================================
- *
- * Allowed:
- *
- * col1_text
- * col2_richtext
- * col3_reference
- *
- * Not allowed:
- *
- * col4_text
- * col5_reference
- *
- */
-function parseColumnField(value) {
-    const match = value
-        .trim()
-        .match(/^col(\d+)_(.+)$/i);
+function parseColumnFieldName(value) {
+    const original = cleanFieldText(value);
+    /**
+     * Match:
+     *
+     * col1_reference
+     * col2_richtext
+     * col3_linkText
+     * col1_referenceAlt
+     */
+    const match = original.match(/^col(\d+)_([\s\S]+)$/i);
     if (!match) {
-        return null;
+        return {
+            original,
+            prefix: '',
+            fieldName: original,
+        };
     }
-    const column = Number(match[1]);
-    const fieldName = match[2]
-        .trim();
-    if (!fieldName) {
-        return null;
+    const columnNumber = Number(match[1]);
+    /**
+     * Maximum only col1-col3.
+     */
+    if (columnNumber > 3) {
+        throw new Error(`Invalid column "${original}". Only col1_, col2_, and col3_ are allowed. col${columnNumber}_ is not supported.`);
+    }
+    if (columnNumber < 1) {
+        throw new Error(`Invalid column "${original}". Column number must start from col1_.`);
     }
     return {
-        column,
-        fieldName,
+        original,
+        prefix: `col${columnNumber}_`,
+        fieldName: cleanFieldText(match[2]),
+        columnNumber,
     };
 }
 /**
  * =========================================================
- * VALIDATE COLUMN PREFIX
- * =========================================================
- *
- * ONLY:
- *
- * col1_
- * col2_
- * col3_
- *
- */
-function validateColumnField(value, blockTitle) {
-    const parsed = parseColumnField(value);
-    if (!parsed) {
-        return null;
-    }
-    if (parsed.column < 1 ||
-        parsed.column > 3) {
-        return {
-            block: blockTitle,
-            field: value,
-            message: `Column "${value}" is not allowed. ` +
-                `Only col1_, col2_, and col3_ are allowed.`,
-        };
-    }
-    return null;
-}
-/**
- * =========================================================
- * KNOWN FIELD DETECTION
+ * KNOWN FIELD TYPES
  * =========================================================
  */
-function isExactKnownField(value) {
-    const normalized = normalizeFieldName(value);
+function isKnownField(value) {
+    const parsed = parseColumnFieldName(value);
+    const normalized = normalizeFieldName(parsed.fieldName);
     return [
         'reference',
         'referencealt',
         'image',
         'imagealt',
         'thumbnailimagealt',
-        'videourl',
-        'video',
         'text',
         'richtext',
-        'aemcontent',
         'description',
         'title',
         'link',
         'linktext',
         'linktitle',
+        'aemcontent',
         'url',
+        'video',
+        'videourl',
     ].includes(normalized);
 }
 /**
  * =========================================================
- * CREATE NORMAL FIELD
+ * CREATE FIELD
  * =========================================================
  */
-function createNormalField(rawName, rawLabel) {
-    const original = cleanFieldText(rawName);
-    if (!original) {
+function createFieldFromName(rawName, rawLabel) {
+    const parsed = parseColumnFieldName(rawName);
+    const baseName = cleanFieldText(parsed.fieldName);
+    if (!baseName) {
         return null;
     }
-    const normalized = normalizeFieldName(original);
-    const label = rawLabel &&
-        cleanFieldText(rawLabel)
-        ? cleanFieldText(rawLabel)
-        : createLabel(original);
+    const normalized = normalizeFieldName(baseName);
+    const prefix = parsed.prefix;
     /**
+     * Final field name.
+     *
+     * Example:
+     *
+     * col1_reference
+     *
+     * -> col1_reference
+     */
+    const fieldName = (name) => `${prefix}${name}`;
+    /**
+     * =======================================================
      * REFERENCE
+     * =======================================================
      */
     if (normalized === 'reference') {
         return {
             component: 'reference',
-            name: 'reference',
-            label,
+            name: fieldName('reference'),
+            label: rawLabel ||
+                createLabel(prefix
+                    ? `${prefix}reference`
+                    : 'Reference'),
             valueType: 'string',
             multi: false,
         };
     }
     /**
+     * =======================================================
      * REFERENCE ALT
+     * =======================================================
      */
     if (normalized === 'referencealt') {
         return {
             component: 'text',
-            name: 'referenceAlt',
-            label,
             valueType: 'string',
+            name: fieldName('referenceAlt'),
+            label: rawLabel ||
+                'Reference Alt',
             value: '',
         };
     }
     /**
+     * =======================================================
      * IMAGE
+     * =======================================================
      */
     if (normalized === 'image') {
         return {
             component: 'reference',
-            name: 'image',
-            label,
+            name: fieldName('image'),
+            label: rawLabel ||
+                'Image',
             valueType: 'string',
             multi: false,
         };
     }
     /**
+     * =======================================================
      * IMAGE ALT
+     * =======================================================
      */
     if (normalized === 'imagealt') {
         return {
             component: 'text',
-            name: 'imageAlt',
-            label,
             valueType: 'string',
+            name: fieldName('imageAlt'),
+            label: rawLabel ||
+                'Image Alt',
             value: '',
         };
     }
     /**
+     * =======================================================
      * THUMBNAIL IMAGE ALT
+     * =======================================================
      */
     if (normalized === 'thumbnailimagealt') {
         return {
             component: 'text',
-            name: 'thumbnailImageAlt',
-            label,
             valueType: 'string',
+            name: fieldName('thumbnailImageAlt'),
+            label: rawLabel ||
+                'Thumbnail Image Alt',
             value: '',
         };
     }
     /**
-     * VIDEO URL
-     */
-    if (normalized === 'videourl') {
-        return {
-            component: 'text',
-            name: 'videoUrl',
-            label,
-            valueType: 'string',
-            value: '',
-        };
-    }
-    /**
-     * VIDEO
-     */
-    if (normalized === 'video') {
-        return {
-            component: 'text',
-            name: 'video',
-            label,
-            valueType: 'string',
-            value: '',
-        };
-    }
-    /**
+     * =======================================================
      * TEXT
+     * =======================================================
+     *
+     * Example:
+     *
+     * col1_text
+     *
+     * -> col1_text
      */
     if (normalized === 'text') {
         return {
             component: 'text',
-            name: 'text',
-            label,
             valueType: 'string',
+            name: fieldName('text'),
+            label: rawLabel ||
+                'Text',
             value: '',
         };
     }
     /**
+     * =======================================================
      * RICHTEXT
+     * =======================================================
+     *
+     * Example:
+     *
+     * col1_richtext
+     *
+     * -> col1_richtext
      */
     if (normalized === 'richtext') {
         return {
             component: 'richtext',
-            name: 'richtext',
-            label,
             valueType: 'string',
+            name: fieldName('richtext'),
+            label: rawLabel ||
+                'Title and Description',
             raw: true,
         };
     }
     /**
+     * =======================================================
      * DESCRIPTION
+     * =======================================================
      */
     if (normalized === 'description') {
         return {
             component: 'richtext',
-            name: 'description',
-            label,
             valueType: 'string',
+            name: fieldName('description'),
+            label: rawLabel ||
+                'Description',
             raw: true,
         };
     }
     /**
+     * =======================================================
      * TITLE
+     * =======================================================
      */
     if (normalized === 'title') {
         return {
             component: 'text',
-            name: 'title',
-            label,
             valueType: 'string',
+            name: fieldName('title'),
+            label: rawLabel ||
+                'Title',
             value: '',
         };
     }
     /**
-     * AEM CONTENT
-     */
-    if (normalized === 'aemcontent') {
-        return {
-            component: 'aem-content',
-            name: 'link',
-            label: 'Link',
-        };
-    }
-    /**
+     * =======================================================
      * LINK
+     * =======================================================
+     *
+     * col2_link
+     *
+     * -> aem-content
+     * -> col2_link
      */
     if (normalized === 'link') {
         return {
             component: 'aem-content',
-            name: 'link',
-            label: 'Link',
+            name: fieldName('link'),
+            label: rawLabel ||
+                'Link',
         };
     }
     /**
+     * =======================================================
      * LINK TEXT
+     * =======================================================
+     *
+     * col2_linkText
+     *
+     * -> text
+     * -> col2_linkText
      */
     if (normalized === 'linktext') {
         return {
             component: 'text',
-            name: 'linkText',
-            label: 'Text',
             valueType: 'string',
+            name: fieldName('linkText'),
+            label: rawLabel ||
+                'Text',
             value: '',
         };
     }
     /**
+     * =======================================================
      * LINK TITLE
+     * =======================================================
      */
     if (normalized === 'linktitle') {
         return {
             component: 'text',
-            name: 'linkTitle',
-            label: 'Title',
             valueType: 'string',
+            name: fieldName('linkTitle'),
+            label: rawLabel ||
+                'Title',
             value: '',
         };
     }
     /**
+     * =======================================================
+     * AEM CONTENT
+     * =======================================================
+     */
+    if (normalized === 'aemcontent') {
+        return {
+            component: 'aem-content',
+            name: fieldName('link'),
+            label: rawLabel ||
+                'Link',
+        };
+    }
+    /**
+     * =======================================================
      * URL
+     * =======================================================
      */
     if (normalized === 'url') {
         return {
             component: 'text',
-            name: 'url',
-            label,
             valueType: 'string',
+            name: fieldName('url'),
+            label: rawLabel ||
+                'URL',
             value: '',
         };
     }
     /**
-     * UNKNOWN
-     */
-    return {
-        component: 'text',
-        name: createId(original),
-        label,
-        valueType: 'string',
-        value: '',
-    };
-}
-/**
- * =========================================================
- * CREATE COLUMN FIELD
- * =========================================================
- *
- * Examples:
- *
- * col1_reference
- * col1_referenceAlt
- * col1_richtext
- * col1_text
- *
- * col2_link
- * col2_linkText
- * col2_linkTitle
- *
- */
-function createColumnField(column, rawFieldName) {
-    const fieldName = cleanFieldText(rawFieldName);
-    if (!fieldName) {
-        return null;
-    }
-    const normalized = normalizeFieldName(fieldName);
-    const prefix = `col${column}_`;
-    /**
-     * REFERENCE
-     *
-     * col1_reference
-     */
-    if (normalized === 'reference') {
-        return {
-            component: 'reference',
-            name: `${prefix}reference`,
-            label: 'Reference',
-            valueType: 'string',
-            multi: false,
-        };
-    }
-    /**
-     * REFERENCE ALT
-     *
-     * col1_referenceAlt
-     */
-    if (normalized === 'referencealt') {
-        return {
-            component: 'text',
-            name: `${prefix}referenceAlt`,
-            label: 'Reference Alt',
-            valueType: 'string',
-            value: '',
-        };
-    }
-    /**
-     * IMAGE
-     */
-    if (normalized === 'image') {
-        return {
-            component: 'reference',
-            name: `${prefix}image`,
-            label: 'Image',
-            valueType: 'string',
-            multi: false,
-        };
-    }
-    /**
-     * IMAGE ALT
-     */
-    if (normalized === 'imagealt') {
-        return {
-            component: 'text',
-            name: `${prefix}imageAlt`,
-            label: 'Image Alt',
-            valueType: 'string',
-            value: '',
-        };
-    }
-    /**
-     * RICHTEXT
-     *
-     * col1_richtext
-     */
-    if (normalized === 'richtext') {
-        return {
-            component: 'richtext',
-            name: `${prefix}richtext`,
-            label: 'Title and Description',
-            valueType: 'string',
-            raw: true,
-        };
-    }
-    /**
-     * TEXT
-     *
-     * IMPORTANT:
-     *
-     * Your requested mapping:
-     *
-     * col1_text
-     *
-     * ->
-     *
-     * {
-     *   component: "richtext",
-     *   name: "col1_text",
-     *   label: "Title and Description"
-     * }
-     */
-    if (normalized === 'text') {
-        return {
-            component: 'richtext',
-            name: `${prefix}text`,
-            label: 'Title and Description',
-            valueType: 'string',
-            raw: true,
-        };
-    }
-    /**
-     * DESCRIPTION
-     */
-    if (normalized === 'description') {
-        return {
-            component: 'richtext',
-            name: `${prefix}description`,
-            label: 'Title and Description',
-            valueType: 'string',
-            raw: true,
-        };
-    }
-    /**
-     * TITLE
-     */
-    if (normalized === 'title') {
-        return {
-            component: 'text',
-            name: `${prefix}title`,
-            label: 'Title',
-            valueType: 'string',
-            value: '',
-        };
-    }
-    /**
-     * AEM CONTENT
-     *
-     * col2_aem-content
-     *
-     * ->
-     *
-     * col2_link
-     */
-    if (normalized === 'aemcontent') {
-        return {
-            component: 'aem-content',
-            name: `${prefix}link`,
-            label: 'Link',
-        };
-    }
-    /**
-     * LINK
-     *
-     * col2_link
-     */
-    if (normalized === 'link') {
-        return {
-            component: 'aem-content',
-            name: `${prefix}link`,
-            label: 'Link',
-        };
-    }
-    /**
-     * LINK TEXT
-     *
-     * col2_linkText
-     */
-    if (normalized === 'linktext') {
-        return {
-            component: 'text',
-            name: `${prefix}linkText`,
-            label: 'Text',
-            valueType: 'string',
-            value: '',
-        };
-    }
-    /**
-     * LINK TITLE
-     *
-     * col2_linkTitle
-     */
-    if (normalized === 'linktitle') {
-        return {
-            component: 'text',
-            name: `${prefix}linkTitle`,
-            label: 'Title',
-            valueType: 'string',
-            value: '',
-        };
-    }
-    /**
+     * =======================================================
      * VIDEO
+     * =======================================================
      */
     if (normalized === 'video') {
         return {
             component: 'text',
-            name: `${prefix}video`,
-            label: 'Video',
             valueType: 'string',
+            name: fieldName('video'),
+            label: rawLabel ||
+                'Video',
             value: '',
         };
     }
     /**
+     * =======================================================
      * VIDEO URL
+     * =======================================================
      */
     if (normalized === 'videourl') {
         return {
             component: 'text',
-            name: `${prefix}videoUrl`,
-            label: 'Video Url',
             valueType: 'string',
+            name: fieldName('videoUrl'),
+            label: rawLabel ||
+                'Video URL',
             value: '',
         };
     }
     /**
-     * UNKNOWN COLUMN FIELD
+     * =======================================================
+     * UNKNOWN FIELD
+     * =======================================================
      */
     return {
         component: 'text',
-        name: `${prefix}${createId(fieldName)}`,
-        label: createLabel(fieldName),
         valueType: 'string',
+        name: fieldName(createId(baseName)),
+        label: rawLabel ||
+            createLabel(baseName),
         value: '',
     };
-}
-/**
- * =========================================================
- * CREATE FIELD FROM NAME
- * =========================================================
- */
-function createFieldFromName(rawName) {
-    const original = cleanFieldText(rawName);
-    if (!original) {
-        return null;
-    }
-    /**
-     * CHECK COLUMN PREFIX
-     */
-    const columnField = parseColumnField(original);
-    if (columnField) {
-        return createColumnField(columnField.column, columnField.fieldName);
-    }
-    /**
-     * NORMAL FIELD
-     */
-    return createNormalField(original);
 }
 /**
  * =========================================================
@@ -618,106 +421,55 @@ function uniqueFields(fields) {
     const seen = new Set();
     const result = [];
     for (const field of fields) {
-        const key = `${field.component}:${field.name}`;
-        if (seen.has(key)) {
+        if (seen.has(field.name)) {
             continue;
         }
-        seen.add(key);
+        seen.add(field.name);
         result.push(field);
     }
     return result;
 }
 /**
  * =========================================================
- * GET ALL FIELD VALUES FROM TABLE
- * =========================================================
- */
-function getTableFieldValues(tableHtml) {
-    const $ = cheerio.load(tableHtml);
-    const values = [];
-    $('th, td').each((_index, cell) => {
-        $(cell)
-            .find('p, h1, h2, h3, h4, h5, h6')
-            .each((_childIndex, element) => {
-            const value = cleanFieldText($(element).text());
-            if (value) {
-                values.push(value);
-            }
-        });
-    });
-    return values;
-}
-/**
- * =========================================================
- * VALIDATE BLOCK COLUMNS
- * =========================================================
- */
-function validateBlockColumns(blockHtml, blockTitle) {
-    const errors = [];
-    const values = getTableFieldValues(blockHtml);
-    for (const value of values) {
-        const error = validateColumnField(value, blockTitle);
-        if (error) {
-            errors.push(error);
-        }
-    }
-    return errors;
-}
-/**
- * =========================================================
  * DETECT FIELDS FROM TABLE
  * =========================================================
  */
-function detectTableFields(blockHtml) {
-    const $ = cheerio.load(blockHtml);
+function detectTableFields(tableHtml) {
+    const $ = cheerio.load(tableHtml);
     const fields = [];
-    $('tr').each((_rowIndex, row) => {
+    $('tr').each((rowIndex, row) => {
+        /**
+         * First row is block title.
+         */
+        if (rowIndex === 0) {
+            return;
+        }
         const cells = $(row)
             .find('th, td')
             .toArray();
         for (const cell of cells) {
-            const values = [];
-            $(cell)
+            /**
+             * Paragraphs inside table cell.
+             */
+            const paragraphs = $(cell)
                 .find('p, h1, h2, h3, h4, h5, h6')
-                .each((_index, element) => {
+                .toArray();
+            for (const element of paragraphs) {
                 const text = cleanFieldText($(element).text());
-                if (text) {
-                    values.push(text);
-                }
-            });
-            /**
-             * If there are no child
-             * paragraph/headings.
-             */
-            if (values.length === 0) {
-                const text = cleanFieldText($(cell).text());
-                if (text) {
-                    values.push(text);
-                }
-            }
-            /**
-             * Process values.
-             */
-            for (const value of values) {
-                const columnField = parseColumnField(value);
-                /**
-                 * Column field.
-                 */
-                if (columnField) {
-                    const field = createColumnField(columnField.column, columnField.fieldName);
-                    if (field) {
-                        fields.push(field);
-                    }
+                if (!text) {
                     continue;
                 }
                 /**
-                 * Normal known field.
+                 * This also validates col1-col3.
+                 *
+                 * col4_xxx will throw error.
                  */
-                if (isExactKnownField(value)) {
-                    const field = createNormalField(value);
-                    if (field) {
-                        fields.push(field);
-                    }
+                if (!isKnownField(text)) {
+                    continue;
+                }
+                const field = createFieldFromName(text);
+                if (field) {
+                    fields.push(field);
                 }
             }
         }
@@ -726,27 +478,29 @@ function detectTableFields(blockHtml) {
 }
 /**
  * =========================================================
- * GET BLOCK TITLE
+ * DETECT FIELDS
  * =========================================================
- *
- * First row of table:
- *
- * Hero (hero-v1)
- *
  */
-function getBlockTitle(tableHtml) {
-    const $ = cheerio.load(tableHtml);
-    const firstRow = $('tr')
+function detectFields(tableHtml) {
+    return detectTableFields(tableHtml);
+}
+/**
+ * =========================================================
+ * BLOCK TITLE
+ * =========================================================
+ */
+function getBlockTitle(table) {
+    const firstRow = table
+        .find('tr')
         .first();
     if (!firstRow.length) {
         return '';
     }
-    const firstText = cleanFieldText(firstRow.text());
-    return firstText;
+    return cleanFieldText(firstRow.text());
 }
 /**
  * =========================================================
- * PARSE BLOCK TITLE + STYLES
+ * PARSE TITLE + STYLES
  * =========================================================
  *
  * Hero (hero-v1)
@@ -756,11 +510,16 @@ function getBlockTitle(tableHtml) {
  * title = Hero
  * styles = ["hero-v1"]
  *
+ *
+ * AI Platforms (cards , swiper)
+ *
+ * ->
+ *
+ * title = AI Platforms
+ * styles = ["cards", "swiper"]
  */
 function parseBlockTitle(value) {
-    const text = value
-        .replace(/\s+/g, ' ')
-        .trim();
+    const text = cleanFieldText(value);
     const match = text.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
     if (!match) {
         return {
@@ -768,8 +527,7 @@ function parseBlockTitle(value) {
             styles: [],
         };
     }
-    const title = match[1]
-        .trim();
+    const title = match[1].trim();
     const styles = match[2]
         .split(',')
         .map((style) => style.trim())
@@ -784,16 +542,18 @@ function parseBlockTitle(value) {
  * CREATE BLOCK HTML
  * =========================================================
  */
-function createEdsBlockHtml(tableHtml, id) {
+function createEdsBlockHtml(tableHtml, blockId) {
     const $ = cheerio.load(tableHtml);
-    const table = $('table')
-        .first();
+    const table = $('table').first();
     if (!table.length) {
         return tableHtml;
     }
-    table.addClass(`${id} block`);
+    /**
+     * Change table into EDS block div.
+     */
+    table.addClass(`${blockId} block`);
     return [
-        `<div class="${id}-wrapper">`,
+        `<div class="${blockId}-wrapper">`,
         $.html(table),
         '</div>',
     ].join('\n');
@@ -805,52 +565,40 @@ function createEdsBlockHtml(tableHtml, id) {
  *
  * Every table is treated as one block.
  *
+ * Example:
+ *
+ * <table>
+ *   Row 1 -> Block title
+ *   Row 2 -> Fields
+ * </table>
  */
 function detectBlocks(html) {
     const blocks = [];
-    const errors = [];
     if (!html ||
         !html.trim()) {
-        return {
-            blocks,
-            errors,
-        };
+        return blocks;
     }
     const $ = cheerio.load(html);
     $('table').each((index, element) => {
-        const tableHtml = $.html(element);
-        const rawTitle = getBlockTitle(tableHtml);
+        const table = $(element);
+        const rawTitle = getBlockTitle(table);
         if (!rawTitle) {
             return;
         }
-        /**
-         * Parse title and styles.
-         */
         const { title, styles, } = parseBlockTitle(rawTitle);
         if (!title) {
             return;
         }
-        /**
-         * Validate columns first.
-         */
-        const blockErrors = validateBlockColumns(tableHtml, title);
-        if (blockErrors.length > 0) {
-            errors.push(...blockErrors);
-            return;
-        }
-        /**
-         * Generate block ID.
-         */
         const id = createId(title) ||
             `block-${index + 1}`;
+        const originalHtml = $.html(table);
         /**
          * Detect fields.
+         *
+         * col4_ error will be thrown here.
          */
-        const fields = detectTableFields(tableHtml);
-        /**
-         * Block HTML.
-         */
-        const finalHtml = createEdsBlockHtml(tableHtml, id);
+        const fields = detectFields(originalHtml);
+        const finalHtml = createEdsBlockHtml(originalHtml, id);
         blocks.push({
             title,
             id,
@@ -859,14 +607,11 @@ function detectBlocks(html) {
             _styles: styles,
         });
     });
-    return {
-        blocks,
-        errors,
-    };
+    return blocks;
 }
 /**
  * =========================================================
- * FIND XWALK DEFINITION
+ * FIND DEFINITION
  * =========================================================
  */
 function findDefinition(definitions, blockId) {
@@ -879,7 +624,7 @@ function findDefinition(definitions, blockId) {
 }
 /**
  * =========================================================
- * FIND XWALK MODEL
+ * FIND MODEL
  * =========================================================
  */
 function findModel(models, blockId) {
@@ -913,19 +658,22 @@ export async function converterRoutes(app) {
     app.post('/convert', async (request, reply) => {
         try {
             /**
-             * Get file.
+             * =================================================
+             * GET FILE
+             * =================================================
              */
             const file = await request.file();
             if (!file) {
                 return reply
                     .code(400)
                     .send({
-                    success: false,
                     error: 'No DOCX file uploaded',
                 });
             }
             /**
-             * Validate extension.
+             * =================================================
+             * VALIDATE FILE
+             * =================================================
              */
             const filename = file.filename
                 .toLowerCase();
@@ -933,66 +681,85 @@ export async function converterRoutes(app) {
                 return reply
                     .code(400)
                     .send({
-                    success: false,
                     error: 'Only DOCX files are supported',
                 });
             }
             /**
-             * Read DOCX.
+             * =================================================
+             * READ FILE
+             * =================================================
              */
             const buffer = await file.toBuffer();
             /**
-             * DOCX -> HTML.
+             * =================================================
+             * DOCX -> HTML
+             * =================================================
              */
-            const mammothResult = await mammoth.convertToHtml({
+            const result = await mammoth.convertToHtml({
                 buffer,
             });
             /**
-             * HTML -> EDS HTML.
+             * =================================================
+             * HTML -> EDS HTML
+             * =================================================
              */
-            const conversionResult = convertToEdsHtml(mammothResult.value);
-            /**
-             * Extract actual HTML.
-             */
+            const conversionResult = convertToEdsHtml(result.value);
             const edsHtml = getEdsHtml(conversionResult);
             if (!edsHtml) {
                 return reply
                     .code(500)
                     .send({
-                    success: false,
                     error: 'EDS HTML conversion returned empty content',
                 });
             }
             /**
-             * Detect blocks.
+             * =================================================
+             * DETECT BLOCKS
+             * =================================================
              */
-            const detection = detectBlocks(edsHtml);
-            const blocks = detection.blocks;
-            /**
-             * IMPORTANT:
-             *
-             * If col4_, col5_, etc. exists,
-             * return validation error.
-             */
-            if (detection.errors.length > 0) {
+            let blocks;
+            try {
+                blocks =
+                    detectBlocks(edsHtml);
+            }
+            catch (error) {
+                /**
+                 * Column validation error.
+                 */
+                const message = error instanceof Error
+                    ? error.message
+                    : 'Failed to detect block fields';
                 return reply
                     .code(400)
                     .send({
-                    success: false,
-                    error: 'Invalid column configuration',
-                    validationErrors: detection.errors,
+                    error: message,
                 });
             }
             /**
-             * Generate XWalk.
+             * =================================================
+             * GENERATE XWALK
+             * =================================================
              */
             const xwalk = generateXwalkConfig(blocks);
             /**
-             * Individual block files.
+             * =================================================
+             * INDIVIDUAL BLOCK FILES
+             * =================================================
              */
             const blockFiles = blocks.map((block) => {
                 const definition = findDefinition(xwalk.definitions, block.id);
                 const model = findModel(xwalk.models, block.id);
+                /**
+                 * IMPORTANT:
+                 *
+                 * Individual JSON now contains:
+                 *
+                 * title
+                 * id
+                 * plugins
+                 * fields
+                 * filters
+                 */
                 return {
                     name: block.id,
                     jsonFile: `${block.id}.json`,
@@ -1004,22 +771,52 @@ export async function converterRoutes(app) {
                         }),
                         fields: model?.fields ||
                             block.fields,
+                        /**
+                         * IMPORTANT:
+                         *
+                         * filters is now present
+                         * in EVERY individual JSON file.
+                         */
+                        filters: [],
                     },
                     html: block.html ||
                         '',
                 };
             });
             /**
-             * Final response.
+             * =================================================
+             * FINAL RESPONSE
+             * =================================================
              */
             return {
                 success: true,
                 filename: file.filename,
+                /**
+                 * Full HTML.
+                 */
                 html: edsHtml,
+                /**
+                 * All detected blocks.
+                 */
                 detectedBlocks: blocks,
+                /**
+                 * Separate block JSON + HTML.
+                 */
                 blockFiles,
+                /**
+                 * Complete XWalk config.
+                 *
+                 * This contains:
+                 *
+                 * definitions
+                 * models
+                 * filters
+                 */
                 xwalk,
-                messages: mammothResult.messages,
+                /**
+                 * Mammoth warnings.
+                 */
+                messages: result.messages,
             };
         }
         catch (error) {
@@ -1027,8 +824,9 @@ export async function converterRoutes(app) {
             return reply
                 .code(500)
                 .send({
-                success: false,
-                error: 'Failed to convert DOCX file',
+                error: error instanceof Error
+                    ? error.message
+                    : 'Failed to convert DOCX file',
             });
         }
     });

@@ -1,66 +1,165 @@
 /**
  * =========================================================
+ * XWALK TYPES
+ * =========================================================
+ */
+/**
+ * =========================================================
  * CREATE BLOCK ID
  * =========================================================
+ *
+ * Examples:
  *
  * Hero
  * -> hero
  *
- * Hero (hero-v1)
- * -> hero
- *
  * AI Platforms
  * -> ai-platforms
+ *
+ * Award Block
+ * -> award-block
  */
 export function createId(value) {
     return value
         .trim()
-        .replace(/\([^)]*\)/g, '')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
+        .replace(/^-+/g, '')
+        .replace(/-+$/g, '')
+        .replace(/-+/g, '-');
+}
+/**
+ * =========================================================
+ * NORMALIZE TO CAMEL CASE
+ * =========================================================
+ *
+ * Reference Alt
+ * -> referenceAlt
+ *
+ * link-text
+ * -> linkText
+ *
+ * link_text
+ * -> linkText
+ */
+function toCamelCase(value) {
+    const cleaned = value
+        .trim()
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/[^a-zA-Z0-9]+/g, ' ')
+        .trim();
+    if (!cleaned) {
+        return '';
+    }
+    const parts = cleaned
+        .split(/\s+/)
+        .filter(Boolean);
+    return parts
+        .map((part, index) => {
+        const lower = part.toLowerCase();
+        if (index === 0) {
+            return lower;
+        }
+        return (lower.charAt(0).toUpperCase() +
+            lower.slice(1));
+    })
+        .join('');
+}
+/**
+ * =========================================================
+ * VALIDATE COLUMN PREFIX
+ * =========================================================
+ *
+ * Allowed:
+ *
+ * col1_
+ * col2_
+ * col3_
+ *
+ * Not allowed:
+ *
+ * col4_
+ * col5_
+ * col10_
+ */
+export function validateColumnField(fieldName) {
+    const match = fieldName.match(/^col(\d+)_/i);
+    if (!match) {
+        return;
+    }
+    const columnNumber = Number(match[1]);
+    if (columnNumber > 3) {
+        throw new Error(`Invalid field "${fieldName}". ` +
+            `Maximum allowed column is col3_. ` +
+            `Only col1_, col2_, and col3_ are allowed.`);
+    }
 }
 /**
  * =========================================================
  * CREATE FIELD NAME
  * =========================================================
  *
- * reference
- * -> reference
+ * Normal:
  *
- * referenceAlt
+ * Reference Alt
  * -> referenceAlt
  *
- * Video url
- * -> videoUrl
+ * Link Text
+ * -> linkText
+ *
+ *
+ * Column:
+ *
+ * col1_text
+ * -> col1_text
+ *
+ * col1_richtext
+ * -> col1_richtext
+ *
+ * col2_linkText
+ * -> col2_linkText
+ *
+ * col3_referenceAlt
+ * -> col3_referenceAlt
  */
 export function createFieldName(value) {
-    const text = value
-        .trim()
-        .replace(/\s+/g, ' ');
-    if (!text) {
+    const original = value.trim();
+    if (!original) {
         return '';
     }
     /**
-     * Already camelCase.
+     * Detect any column prefix first.
+     *
+     * This also detects col4_, col5_, etc.
+     * so validation can throw an error.
      */
-    if (/^[a-z][a-zA-Z0-9]*$/.test(text)) {
-        return text;
+    const anyColumnMatch = original.match(/^col(\d+)[_\s-]+(.+)$/i);
+    if (anyColumnMatch) {
+        const columnNumber = Number(anyColumnMatch[1]);
+        /**
+         * Throw error for col4+.
+         */
+        if (columnNumber > 3) {
+            throw new Error(`Invalid field "${original}". ` +
+                `Maximum allowed column is col3_. ` +
+                `Only col1_, col2_, and col3_ are allowed.`);
+        }
+        const column = `col${columnNumber}`;
+        const fieldPart = toCamelCase(anyColumnMatch[2]);
+        if (!fieldPart) {
+            return '';
+        }
+        /**
+         * IMPORTANT:
+         *
+         * Keep underscore between
+         * column and field name.
+         *
+         * col1_text
+         */
+        return `${column}_${fieldPart}`;
     }
-    /**
-     * Convert:
-     *
-     * Reference Alt
-     * -> referenceAlt
-     *
-     * video-url
-     * -> videoUrl
-     */
-    return text
-        .replace(/[-_\s]+(.)?/g, (_, char) => char
-        ? char.toUpperCase()
-        : '')
-        .replace(/^[A-Z]/, (char) => char.toLowerCase());
+    return toCamelCase(original);
 }
 /**
  * =========================================================
@@ -69,226 +168,255 @@ export function createFieldName(value) {
  *
  * referenceAlt
  * -> Reference Alt
+ *
+ * linkText
+ * -> Link Text
+ *
+ * col1_text
+ * -> Text
+ *
+ * col1_richtext
+ * -> Richtext
+ *
+ * col2_linkText
+ * -> Link Text
  */
 export function createFieldLabel(value) {
-    const name = createFieldName(value);
-    if (!name) {
-        return '';
-    }
-    return name
-        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    let result = value
+        .trim()
+        /**
+         * Remove column prefix from label.
+         */
+        .replace(/^col[1-3]_+/i, '')
+        /**
+         * Convert camelCase.
+         */
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        /**
+         * Replace snake/kebab.
+         */
         .replace(/[-_]+/g, ' ')
         .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/\b\w/g, (char) => char.toUpperCase());
+        .trim();
+    if (!result) {
+        return '';
+    }
+    return result.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 /**
  * =========================================================
- * STYLE DISPLAY NAME
+ * CREATE STYLE DISPLAY NAME
  * =========================================================
  *
  * hero-v1
  * -> Hero V1
+ *
+ * background-semantic-green
+ * -> Background Semantic Green
+ *
+ * form-step
+ * -> Form Step
  */
-function styleDisplayName(value) {
+function createStyleName(value) {
     return value
         .trim()
         .replace(/[-_]+/g, ' ')
         .replace(/\s+/g, ' ')
+        .trim()
         .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 /**
  * =========================================================
- * GET BLOCK STYLES
+ * NORMALIZE FIELD
  * =========================================================
  */
-function getBlockStyles(block) {
-    if (!Array.isArray(block._styles)) {
-        return [];
+function normalizeField(field) {
+    const originalName = field.name
+        ? field.name.trim()
+        : '';
+    if (!originalName) {
+        throw new Error('Field name cannot be empty.');
     }
-    return block._styles
-        .filter((style) => typeof style === 'string' &&
-        style.trim().length > 0)
-        .map((style) => style.trim());
-}
-/**
- * =========================================================
- * EXTRACT STYLES FROM TITLE
- * =========================================================
- *
- * Hero (hero-v1)
- * -> ["hero-v1"]
- *
- * Cards (cards, dark)
- * -> ["cards", "dark"]
- */
-function extractStylesFromTitle(title) {
-    const match = title.match(/\(([^()]+)\)\s*$/);
-    if (!match) {
-        return [];
-    }
-    return match[1]
-        .split(',')
-        .map((style) => style.trim())
-        .filter(Boolean);
-}
-/**
- * =========================================================
- * CLEAN BLOCK TITLE
- * =========================================================
- *
- * Hero (hero-v1)
- * -> Hero
- */
-function cleanBlockTitle(title) {
-    return title
-        .trim()
-        .replace(/\s*\([^)]*\)\s*$/, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-/**
- * =========================================================
- * CREATE CLASSES FIELD
- * =========================================================
- */
-function createStyleField(block, blockTitle) {
-    let styles = getBlockStyles(block);
-    if (!styles.length) {
-        styles =
-            extractStylesFromTitle(block.title);
-    }
+    /**
+     * Validate col1/col2/col3.
+     */
+    validateColumnField(originalName);
+    /**
+     * Generate final field name.
+     */
+    const name = createFieldName(originalName);
+    /**
+     * Validate final name.
+     */
+    validateColumnField(name);
+    /**
+     * Preserve existing label.
+     * Otherwise generate one.
+     */
+    const label = field.label &&
+        field.label.trim()
+        ? field.label.trim()
+        : createFieldLabel(name);
     return {
-        component: 'multiselect',
-        name: 'classes',
-        label: 'Classes',
-        options: styles.length > 0
-            ? [
-                {
-                    name: `${blockTitle} Style`,
-                    children: styles.map((style) => ({
-                        name: styleDisplayName(style),
-                        value: style,
-                    })),
-                },
-            ]
-            : [],
+        ...field,
+        name,
+        label,
     };
 }
 /**
  * =========================================================
- * REMOVE EXISTING CLASSES FIELD
+ * UNIQUE FIELDS
  * =========================================================
  */
-function removeClassesField(fields) {
-    return fields.filter((field) => field.name !== 'classes');
-}
-/**
- * =========================================================
- * REMOVE DUPLICATE FIELDS
- * =========================================================
- *
- * reference
- * referenceAlt
- *
- * are different fields.
- */
-function removeDuplicateFields(fields) {
+function uniqueFields(fields) {
     const seen = new Set();
-    return fields.filter((field) => {
-        const key = `${field.component}:${field.name}`;
+    const result = [];
+    for (const field of fields) {
+        const normalized = normalizeField(field);
+        const key = normalized.name.toLowerCase();
         if (seen.has(key)) {
-            return false;
+            continue;
         }
         seen.add(key);
-        return true;
-    });
+        result.push(normalized);
+    }
+    return result;
 }
 /**
  * =========================================================
- * GENERATE XWALK CONFIG
+ * CREATE CLASSES / STYLE FIELD
  * =========================================================
+ *
+ * Input:
+ *
+ * ["hero-v1"]
+ *
+ * Output:
+ *
+ * {
+ *   component: "multiselect",
+ *   name: "classes",
+ *   label: "Style",
+ *   options: [
+ *     {
+ *       name: "Hero V1",
+ *       value: "hero-v1"
+ *     }
+ *   ]
+ * }
+ */
+function createClassesField(styles) {
+    /**
+     * Remove empty and duplicate styles.
+     */
+    const uniqueStyles = [
+        ...new Set(styles
+            .map((style) => style.trim())
+            .filter(Boolean)),
+    ];
+    return {
+        component: 'multiselect',
+        name: 'classes',
+        label: 'Style',
+        options: uniqueStyles.map((style) => ({
+            name: createStyleName(style),
+            value: style,
+        })),
+    };
+}
+/**
+ * =========================================================
+ * CREATE XWALK DEFINITION
+ * =========================================================
+ */
+function createDefinition(block) {
+    return {
+        title: block.title,
+        id: block.id,
+        plugins: {
+            xwalk: {
+                page: {
+                    resourceType: 'core/franklin/components/block/v1/block',
+                    template: {
+                        name: block.title,
+                        model: block.id,
+                        filter: block.id,
+                    },
+                },
+            },
+        },
+    };
+}
+/**
+ * =========================================================
+ * CREATE XWALK MODEL
+ * =========================================================
+ */
+function createModel(block) {
+    const styles = Array.isArray(block._styles)
+        ? block._styles
+            .map((style) => style.trim())
+            .filter(Boolean)
+        : [];
+    /**
+     * Normalize detected fields.
+     */
+    const normalizedFields = uniqueFields(block.fields || []);
+    /**
+     * Style field always first.
+     */
+    const fields = [
+        createClassesField(styles),
+        ...normalizedFields,
+    ];
+    return {
+        id: block.id,
+        fields,
+    };
+}
+/**
+ * =========================================================
+ * GENERATE FULL XWALK CONFIG
+ * =========================================================
+ *
+ * Final structure:
+ *
+ * {
+ *   definitions: [],
+ *   models: [],
+ *   filters: []
+ * }
  */
 export function generateXwalkConfig(blocks) {
     const definitions = [];
     const models = [];
-    const filters = [];
     /**
      * Prevent duplicate IDs.
      */
-    const processedIds = new Set();
+    const usedIds = new Set();
     for (const block of blocks) {
-        /**
-         * Clean block title.
-         *
-         * Hero (hero-v1)
-         * -> Hero
-         */
-        const blockTitle = cleanBlockTitle(block.title);
-        /**
-         * Block ID.
-         *
-         * Hero
-         * -> hero
-         */
-        const blockId = createId(blockTitle);
-        if (!blockId) {
+        if (!block.id) {
             continue;
         }
-        if (processedIds.has(blockId)) {
+        if (usedIds.has(block.id)) {
             continue;
         }
-        processedIds.add(blockId);
+        usedIds.add(block.id);
         /**
-         * =====================================================
-         * DEFINITION
-         * =====================================================
+         * Definition.
          */
-        definitions.push({
-            title: blockTitle,
-            id: blockId,
-            plugins: {
-                xwalk: {
-                    page: {
-                        resourceType: 'core/franklin/components/block/v1/block',
-                        template: {
-                            name: blockTitle,
-                            model: blockId,
-                            filter: blockId,
-                        },
-                    },
-                },
-            },
-        });
+        definitions.push(createDefinition(block));
         /**
-         * Existing fields.
+         * Model.
          */
-        let fields = removeClassesField(block.fields || []);
-        /**
-         * Remove duplicates.
-         */
-        fields =
-            removeDuplicateFields(fields);
-        /**
-         * Classes field.
-         */
-        const styleField = createStyleField(block, blockTitle);
-        /**
-         * =====================================================
-         * MODEL
-         * =====================================================
-         */
-        models.push({
-            id: blockId,
-            fields: [
-                styleField,
-                ...fields,
-            ],
-        });
+        models.push(createModel(block));
     }
     return {
         definitions,
         models,
-        filters,
+        /**
+         * Full XWalk config.
+         */
+        filters: [],
     };
 }
