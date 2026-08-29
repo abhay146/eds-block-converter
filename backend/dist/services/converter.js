@@ -1,18 +1,6 @@
 import * as cheerio from 'cheerio';
 /**
- * Convert Mammoth HTML into EDS-style block HTML.
- *
- * Tables are converted into:
- *
- * <div class="cards">
- *   <div>
- *     <div>...</div>
- *     <div>...</div>
- *   </div>
- * </div>
- *
- * The temporary "cards" class is replaced later
- * by the detected block name.
+ * Convert Mammoth HTML into EDS-style HTML.
  */
 export function convertToEdsHtml(html) {
     const $ = cheerio.load(html);
@@ -23,7 +11,7 @@ export function convertToEdsHtml(html) {
     return $('body').html() || '';
 }
 /**
- * Convert a table into an EDS block.
+ * Convert DOCX table into EDS block.
  */
 function convertTableToBlock($, table) {
     const rows = $(table)
@@ -32,9 +20,6 @@ function convertTableToBlock($, table) {
     if (!rows.length) {
         return $(table).toString();
     }
-    /**
-     * Metadata table should not become a block.
-     */
     if (isMetadataTable($, rows)) {
         return convertMetadataTable($, rows);
     }
@@ -52,7 +37,11 @@ function convertTableToBlock($, table) {
             return `<div>${content}</div>`;
         })
             .join('\n    ');
-        return `<div>\n    ${cellHtml}\n  </div>`;
+        return [
+            '<div>',
+            `    ${cellHtml}`,
+            '</div>',
+        ].join('\n');
     })
         .filter(Boolean);
     if (!blockRows.length) {
@@ -116,25 +105,12 @@ function convertMetadataTable($, rows) {
     ].join('\n');
 }
 /**
- * Clean a table cell.
- *
- * IMPORTANT:
- * We intentionally DO NOT keep base64 image data.
- *
- * DOCX image:
- *
- * <img src="data:image/jpeg;base64,...">
- *
- * becomes:
- *
- * [IMAGE]
+ * Clean table cell.
  */
 function cleanCell($, cell) {
     const $cell = cheerio.load(cell);
     /**
-     * Remove base64 image.
-     *
-     * We keep an EDS-friendly marker instead.
+     * Replace images.
      */
     $cell('img').each((_, img) => {
         const alt = $cell(img)
@@ -151,12 +127,11 @@ function cleanCell($, cell) {
      * Remove empty paragraphs.
      */
     $cell('p').each((_, p) => {
-        const hasText = $cell(p)
+        const text = $cell(p)
             .text()
-            .trim()
-            .length > 0;
-        const hasImage = $cell(p).text().includes('[IMAGE]');
-        if (!hasText && !hasImage) {
+            .trim();
+        const hasImage = text.includes('[IMAGE');
+        if (!text && !hasImage) {
             $cell(p).remove();
         }
     });
@@ -167,11 +142,15 @@ function cleanCell($, cell) {
         const text = $cell(div)
             .text()
             .trim();
-        if (!text && !$cell(div).find('img').length) {
+        if (!text &&
+            !$cell(div).find('img').length) {
             $cell(div).remove();
         }
     });
-    return ($cell.root().html()?.trim() || '');
+    return ($cell
+        .root()
+        .html()
+        ?.trim() || '');
 }
 /**
  * Escape HTML.
@@ -185,7 +164,7 @@ function escapeHtml(value) {
         .replace(/'/g, '&#039;');
 }
 /**
- * Escape simple text used inside image markers.
+ * Escape image marker text.
  */
 function escapeText(value) {
     return value

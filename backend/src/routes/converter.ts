@@ -1,8 +1,9 @@
-import Fastify from 'fastify';
 import type {
   FastifyInstance,
 } from 'fastify';
+
 import * as cheerio from 'cheerio';
+
 import mammoth from 'mammoth';
 
 import {
@@ -26,8 +27,7 @@ import type {
  */
 
 /**
- * Convert camelCase / kebab-case field names
- * into a readable label.
+ * Create readable label.
  *
  * referenceAlt
  * -> Reference Alt
@@ -61,16 +61,13 @@ function createLabel(
 }
 
 /**
- * Normalize field name only for
- * comparison.
+ * Normalize only for comparison.
  *
  * referenceAlt
  * reference alt
  * reference-alt
  *
- * all become:
- *
- * referencealt
+ * -> referencealt
  */
 function normalizeFieldName(
   value: string,
@@ -89,12 +86,16 @@ function normalizeFieldName(
 }
 
 /**
- * Clean field text.
+ * Clean text.
  */
 function cleanFieldText(
   value: string,
 ): string {
   return value
+    .replace(
+      /\u00a0/g,
+      ' ',
+    )
     .replace(
       /\s+/g,
       ' ',
@@ -106,20 +107,6 @@ function cleanFieldText(
  * =========================================================
  * KNOWN FIELD DETECTION
  * =========================================================
- */
-
-/**
- * Check if a value is a known field.
- *
- * IMPORTANT:
- *
- * We intentionally keep this list strict.
- *
- * Normal content like:
- *
- * "This is some text"
- *
- * must NOT become a field called "text".
  */
 function isExactKnownField(
   value: string,
@@ -138,6 +125,8 @@ function isExactKnownField(
     'videourl',
     'video',
     'text',
+    'richtext',
+    'aemcontent',
     'description',
     'title',
     'link',
@@ -149,26 +138,25 @@ function isExactKnownField(
 
 /**
  * =========================================================
- * CREATE XWALK FIELD
+ * CREATE FIELD FROM DOCX VALUE
  * =========================================================
  *
- * This is the most important function.
- *
- * DOCX field:
+ * IMPORTANT MAPPING:
  *
  * reference
- * -> reference component
+ * -> reference
  *
  * referenceAlt
- * -> text component
- * -> imageAlt name
+ * -> referenceAlt
+ *
+ * richtext
+ * -> richtext + raw true
  *
  * text
- * -> richtext component
+ * -> text + value ""
  *
- * Video url
- * -> text component
- * -> videoUrl name
+ * aem-content
+ * -> aem-content + link
  */
 function createFieldFromName(
   rawName: string,
@@ -188,14 +176,11 @@ function createFieldFromName(
       original,
     );
 
-  /**
-   * Use the actual DOCX label
-   * whenever it exists.
-   *
-   * NEVER hardcode:
-   *
-   * Image Alt / Thumbnail Image Alt
-   */
+  const defaultLabel =
+    createLabel(
+      original,
+    );
+
   const label =
     rawLabel &&
     cleanFieldText(
@@ -204,14 +189,12 @@ function createFieldFromName(
       ? cleanFieldText(
           rawLabel,
         )
-      : createLabel(
-          original,
-        );
+      : defaultLabel;
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
    * REFERENCE
-   * -------------------------------------------------------
+   * =====================================================
    */
   if (
     normalized ===
@@ -235,18 +218,17 @@ function createFieldFromName(
   }
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
    * REFERENCE ALT
-   * -------------------------------------------------------
    *
-   * DOCX:
+   * IMPORTANT:
    *
    * referenceAlt
+   * MUST remain
+   * referenceAlt
    *
-   * XWalk:
-   *
-   * component: text
-   * name: imageAlt
+   * NOT imageAlt
+   * =====================================================
    */
   if (
     normalized ===
@@ -260,16 +242,19 @@ function createFieldFromName(
         'string',
 
       name:
-        'imageAlt',
+        'referenceAlt',
 
       label,
+
+      value:
+        '',
     };
   }
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
    * IMAGE
-   * -------------------------------------------------------
+   * =====================================================
    */
   if (
     normalized ===
@@ -293,15 +278,13 @@ function createFieldFromName(
   }
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
    * IMAGE ALT
-   * -------------------------------------------------------
+   * =====================================================
    */
   if (
     normalized ===
-      'imagealt' ||
-    normalized ===
-      'thumbnailimagealt'
+    'imagealt'
   ) {
     return {
       component:
@@ -314,13 +297,42 @@ function createFieldFromName(
         'imageAlt',
 
       label,
+
+      value:
+        '',
     };
   }
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
+   * THUMBNAIL IMAGE ALT
+   * =====================================================
+   */
+  if (
+    normalized ===
+    'thumbnailimagealt'
+  ) {
+    return {
+      component:
+        'text',
+
+      valueType:
+        'string',
+
+      name:
+        'thumbnailImageAlt',
+
+      label,
+
+      value:
+        '',
+    };
+  }
+
+  /**
+   * =====================================================
    * VIDEO URL
-   * -------------------------------------------------------
+   * =====================================================
    */
   if (
     normalized ===
@@ -330,20 +342,23 @@ function createFieldFromName(
       component:
         'text',
 
+      valueType:
+        'string',
+
       name:
         'videoUrl',
 
       label,
 
-      valueType:
-        'string',
+      value:
+        '',
     };
   }
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
    * VIDEO
-   * -------------------------------------------------------
+   * =====================================================
    */
   if (
     normalized ===
@@ -353,20 +368,37 @@ function createFieldFromName(
       component:
         'text',
 
+      valueType:
+        'string',
+
       name:
         'video',
 
       label,
 
-      valueType:
-        'string',
+      value:
+        '',
     };
   }
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
    * TEXT
-   * -------------------------------------------------------
+   *
+   * DOCX:
+   *
+   * text
+   *
+   * OUTPUT:
+   *
+   * {
+   *   component: "text",
+   *   valueType: "string",
+   *   name: "text",
+   *   label: "Text",
+   *   value: ""
+   * }
+   * =====================================================
    */
   if (
     normalized ===
@@ -374,25 +406,65 @@ function createFieldFromName(
   ) {
     return {
       component:
-        'richtext',
+        'text',
+
+      valueType:
+        'string',
 
       name:
         'text',
 
-      value:
-        '',
-
       label,
 
-      valueType:
-        'string',
+      value:
+        '',
     };
   }
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
+   * RICHTEXT
+   *
+   * DOCX:
+   *
+   * richtext
+   *
+   * OUTPUT:
+   *
+   * {
+   *   component: "richtext",
+   *   valueType: "string",
+   *   name: "richtext",
+   *   label: "Richtext",
+   *   raw: true
+   * }
+   * =====================================================
+   */
+  if (
+    normalized ===
+    'richtext'
+  ) {
+    return {
+      component:
+        'richtext',
+
+      valueType:
+        'string',
+
+      name:
+        'richtext',
+
+      label,
+
+      raw:
+        true,
+    };
+  }
+
+  /**
+   * =====================================================
    * DESCRIPTION
-   * -------------------------------------------------------
+   * =====================================================
    */
   if (
     normalized ===
@@ -402,23 +474,23 @@ function createFieldFromName(
       component:
         'richtext',
 
+      valueType:
+        'string',
+
       name:
         'description',
 
-      value:
-        '',
-
       label,
 
-      valueType:
-        'string',
+      raw:
+        true,
     };
   }
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
    * TITLE
-   * -------------------------------------------------------
+   * =====================================================
    */
   if (
     normalized ===
@@ -428,20 +500,56 @@ function createFieldFromName(
       component:
         'text',
 
+      valueType:
+        'string',
+
       name:
         'title',
 
       label,
 
-      valueType:
-        'string',
+      value:
+        '',
     };
   }
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
+   * AEM-CONTENT
+   *
+   * DOCX:
+   *
+   * aem-content
+   *
+   * OUTPUT:
+   *
+   * {
+   *   component: "aem-content",
+   *   name: "link",
+   *   label: "Link"
+   * }
+   * =====================================================
+   */
+  if (
+    normalized ===
+    'aemcontent'
+  ) {
+    return {
+      component:
+        'aem-content',
+
+      name:
+        'link',
+
+      label:
+        'Link',
+    };
+  }
+
+  /**
+   * =====================================================
    * LINK
-   * -------------------------------------------------------
+   * =====================================================
    */
   if (
     normalized ===
@@ -459,9 +567,9 @@ function createFieldFromName(
   }
 
   /**
-   * -------------------------------------------------------
+   * =====================================================
    * URL
-   * -------------------------------------------------------
+   * =====================================================
    */
   if (
     normalized ===
@@ -471,24 +579,30 @@ function createFieldFromName(
       component:
         'text',
 
+      valueType:
+        'string',
+
       name:
         'url',
 
       label,
 
-      valueType:
-        'string',
+      value:
+        '',
     };
   }
 
   /**
-   * Unknown field.
-   *
-   * Preserve it as text.
+   * =====================================================
+   * UNKNOWN FIELD
+   * =====================================================
    */
   return {
     component:
       'text',
+
+    valueType:
+      'string',
 
     name:
       createId(
@@ -497,8 +611,8 @@ function createFieldFromName(
 
     label,
 
-    valueType:
-      'string',
+    value:
+      '',
   };
 }
 
@@ -507,7 +621,6 @@ function createFieldFromName(
  * UNIQUE FIELDS
  * =========================================================
  */
-
 function uniqueFields(
   fields: XwalkField[],
 ): XwalkField[] {
@@ -545,49 +658,8 @@ function uniqueFields(
 
 /**
  * =========================================================
- * COLUMN HELPERS
+ * DETECT FIELDS FROM TABLE
  * =========================================================
- */
-
-function detectColumnPrefix(
-  blockHtml: string,
-): string {
-  const match =
-    blockHtml.match(
-      /column[-_]?(\d+)/i,
-    );
-
-  if (!match) {
-    return '';
-  }
-
-  return `column${match[1]}`;
-}
-
-function withColumnPrefix(
-  name: string,
-  prefix: string,
-): string {
-  if (!prefix) {
-    return name;
-  }
-
-  return `${prefix}-${name}`;
-}
-
-/**
- * =========================================================
- * TABLE FIELD DETECTION
- * =========================================================
- *
- * Supports tables like:
- *
- * | reference    | Reference |
- * | referenceAlt | Reference Alt |
- * | text         | Text |
- *
- * First cell = field name
- * Second cell = label
  */
 function detectTableFields(
   blockHtml: string,
@@ -601,57 +673,116 @@ function detectTableFields(
     XwalkField[] = [];
 
   $('table').each(
-    (_, table) => {
+    (_tableIndex, table) => {
       $(table)
         .find('tr')
         .each(
-          (_, row) => {
+          (_rowIndex, row) => {
             const cells =
               $(row)
                 .find('th, td')
                 .toArray();
 
-            if (
-              cells.length === 0
+            for (
+              const cell of cells
             ) {
-              return;
-            }
-
-            const name =
-              cleanFieldText(
-                $(cells[0])
-                  .text(),
-              );
-
-            if (!name) {
-              return;
-            }
-
-            /**
-             * If second cell exists,
-             * treat it as label.
-             */
-            const label =
-              cells.length >= 2
-                ? cleanFieldText(
-                    $(cells[1])
-                      .text(),
+              /**
+               * Get every paragraph separately.
+               *
+               * Example:
+               *
+               * reference
+               * referenceAlt
+               */
+              const elements =
+                $(cell)
+                  .find(
+                    'p, h1, h2, h3, h4, h5, h6',
                   )
-                : '';
+                  .toArray();
 
-            const field =
-              createFieldFromName(
-                name,
-                label,
-              );
+              if (
+                elements.length
+              ) {
+                for (
+                  const element of elements
+                ) {
+                  const text =
+                    cleanFieldText(
+                      $(element)
+                        .text(),
+                    );
 
-            if (!field) {
-              return;
+                  if (
+                    !text ||
+                    !isExactKnownField(
+                      text,
+                    )
+                  ) {
+                    continue;
+                  }
+
+                  const field =
+                    createFieldFromName(
+                      text,
+                    );
+
+                  if (
+                    field
+                  ) {
+                    fields.push(
+                      field,
+                    );
+                  }
+                }
+
+                continue;
+              }
+
+              const cellText =
+                $(cell)
+                  .text();
+
+              const values =
+                cellText
+                  .split(
+                    /\r?\n/,
+                  )
+                  .map(
+                    (value) =>
+                      cleanFieldText(
+                        value,
+                      ),
+                  )
+                  .filter(
+                    Boolean,
+                  );
+
+              for (
+                const value of values
+              ) {
+                if (
+                  !isExactKnownField(
+                    value,
+                  )
+                ) {
+                  continue;
+                }
+
+                const field =
+                  createFieldFromName(
+                    value,
+                  );
+
+                if (
+                  field
+                ) {
+                  fields.push(
+                    field,
+                  );
+                }
+              }
             }
-
-            fields.push(
-              field,
-            );
           },
         );
     },
@@ -664,18 +795,11 @@ function detectTableFields(
 
 /**
  * =========================================================
- * FIELD EXTRACTION FROM PARAGRAPHS
+ * DETECT FIELDS FROM PARAGRAPHS
  * =========================================================
  *
- * This handles:
- *
- * <p>reference</p>
- * <p>referenceAlt</p>
- * <p>Video url</p>
- * <p>text</p>
- *
- * It also handles cases where DOCX
- * has generated nested DIVs.
+ * This is especially important because
+ * convertToEdsHtml converts tables into DIVs.
  */
 function detectFieldsFromParagraphs(
   blockHtml: string,
@@ -691,25 +815,22 @@ function detectFieldsFromParagraphs(
   $(
     'p, h1, h2, h3, h4, h5, h6',
   ).each(
-    (_, element) => {
+    (_index, element) => {
       const text =
         cleanFieldText(
           $(element)
             .text(),
         );
 
-      if (!text) {
+      if (
+        !text
+      ) {
         return;
       }
 
       /**
-       * Exact field only.
-       *
-       * This prevents normal sentence:
-       *
-       * "This is some text"
-       *
-       * from becoming a "text" field.
+       * Normal paragraph content
+       * must not become a field.
        */
       if (
         !isExactKnownField(
@@ -724,13 +845,13 @@ function detectFieldsFromParagraphs(
           text,
         );
 
-      if (!field) {
-        return;
+      if (
+        field
+      ) {
+        fields.push(
+          field,
+        );
       }
-
-      fields.push(
-        field,
-      );
     },
   );
 
@@ -741,21 +862,11 @@ function detectFieldsFromParagraphs(
 
 /**
  * =========================================================
- * FIELD EXTRACTION FROM RAW HTML
+ * DETECT FIELDS FROM RAW TEXT
  * =========================================================
  *
- * Extra fallback for cases where
- * Mammoth puts multiple field names
- * inside one text node.
- *
- * Example:
- *
- * reference
- * referenceAlt
- * Video url
- * text
- *
- * even if they are inside one DIV.
+ * Fallback for DOCX structures where
+ * multiple field names appear in one DIV.
  */
 function detectFieldsFromRawText(
   blockHtml: string,
@@ -769,36 +880,17 @@ function detectFieldsFromRawText(
     XwalkField[] = [];
 
   /**
-   * Get all text nodes through
-   * body text.
-   */
-  const bodyText =
-    $('body')
-      .text()
-      .replace(
-        /\u00a0/g,
-        ' ',
-      )
-      .replace(
-        /\s+/g,
-        ' ',
-      )
-      .trim();
-
-  if (!bodyText) {
-    return [];
-  }
-
-  /**
-   * Split possible field names.
-   *
-   * We intentionally check longer
-   * names before shorter names.
+   * Check all elements individually
+   * so text from separate paragraphs
+   * does not get merged incorrectly.
    */
   const candidates = [
     'referenceAlt',
     'thumbnailImageAlt',
     'imageAlt',
+    'aem-content',
+    'aem content',
+    'richtext',
     'Video url',
     'video url',
     'reference',
@@ -811,38 +903,67 @@ function detectFieldsFromRawText(
     'url',
   ];
 
+  const elements =
+    $('p, h1, h2, h3, h4, h5, h6, div')
+      .toArray();
+
   for (
-    const candidate of candidates
+    const element of elements
   ) {
-    const regex =
-      new RegExp(
-        `(?:^|[\\s|,/;:]+)${candidate.replace(
-          /[-/\\^$*+?.()|[\]{}]/g,
-          '\\$&',
-        )}(?=$|[\\s|,/;:]+)`,
-        'i',
+    /**
+     * Only use direct text when possible.
+     */
+    const text =
+      cleanFieldText(
+        $(element)
+          .clone()
+          .children()
+          .remove()
+          .end()
+          .text(),
       );
 
     if (
-      !regex.test(
-        bodyText,
-      )
+      !text
     ) {
       continue;
     }
 
-    const field =
-      createFieldFromName(
-        candidate,
-      );
+    for (
+      const candidate of candidates
+    ) {
+      const candidateNormalized =
+        normalizeFieldName(
+          candidate,
+        );
 
-    if (!field) {
-      continue;
+      const textNormalized =
+        normalizeFieldName(
+          text,
+        );
+
+      if (
+        textNormalized !==
+        candidateNormalized
+      ) {
+        continue;
+      }
+
+      const field =
+        createFieldFromName(
+          candidate,
+        );
+
+      if (
+        field
+      ) {
+        fields.push(
+          field,
+        );
+      }
+
+      break;
     }
-
-    fields.push(
-      field,
-    );
   }
 
   return uniqueFields(
@@ -852,10 +973,9 @@ function detectFieldsFromRawText(
 
 /**
  * =========================================================
- * GENERIC FALLBACK
+ * GENERIC CONTENT FALLBACK
  * =========================================================
  */
-
 function detectFallbackFields(
   blockHtml: string,
 ): XwalkField[] {
@@ -886,11 +1006,6 @@ function detectFallbackFields(
   const hasList =
     $('ul, ol').length > 0;
 
-  const columnPrefix =
-    detectColumnPrefix(
-      blockHtml,
-    );
-
   if (
     hasHeading
   ) {
@@ -899,16 +1014,16 @@ function detectFallbackFields(
         'text',
 
       name:
-        withColumnPrefix(
-          'title',
-          columnPrefix,
-        ),
+        'title',
 
       label:
         'Title',
 
       valueType:
         'string',
+
+      value:
+        '',
     });
   }
 
@@ -921,19 +1036,16 @@ function detectFallbackFields(
         'richtext',
 
       name:
-        withColumnPrefix(
-          'description',
-          columnPrefix,
-        ),
+        'richtext',
 
       label:
-        'Description',
-
-      value:
-        '',
+        'Richtext',
 
       valueType:
         'string',
+
+      raw:
+        true,
     });
   }
 
@@ -945,10 +1057,7 @@ function detectFallbackFields(
         'reference',
 
       name:
-        withColumnPrefix(
-          'image',
-          columnPrefix,
-        ),
+        'image',
 
       label:
         'Image',
@@ -969,10 +1078,7 @@ function detectFallbackFields(
         'aem-content',
 
       name:
-        withColumnPrefix(
-          'link',
-          columnPrefix,
-        ),
+        'link',
 
       label:
         'Link',
@@ -992,41 +1098,21 @@ function detectFallbackFields(
 function detectFields(
   blockHtml: string,
 ): XwalkField[] {
-  /**
-   * 1. Real table.
-   */
   const tableFields =
     detectTableFields(
       blockHtml,
     );
 
-  /**
-   * 2. Paragraph / heading
-   *    based detection.
-   */
   const paragraphFields =
     detectFieldsFromParagraphs(
       blockHtml,
     );
 
-  /**
-   * 3. Raw text fallback.
-   */
   const rawTextFields =
     detectFieldsFromRawText(
       blockHtml,
     );
 
-  /**
-   * Merge everything.
-   *
-   * uniqueFields prevents:
-   *
-   * reference
-   * reference
-   *
-   * from appearing twice.
-   */
   const detected =
     uniqueFields([
       ...tableFields,
@@ -1035,14 +1121,11 @@ function detectFields(
     ]);
 
   if (
-    detected.length
+    detected.length > 0
   ) {
     return detected;
   }
 
-  /**
-   * 4. Generic content fallback.
-   */
   return detectFallbackFields(
     blockHtml,
   );
@@ -1053,7 +1136,6 @@ function detectFields(
  * BLOCK TITLE
  * =========================================================
  */
-
 function getBlockTitle(
   block: cheerio.Cheerio<any>,
 ): string {
@@ -1086,14 +1168,7 @@ function getBlockTitle(
       .trim();
 
   /**
-   * IMPORTANT:
-   *
-   * Field names should NOT become
-   * block title.
-   *
-   * If first row contains only
-   * reference/referenceAlt/text etc.,
-   * don't use it as title.
+   * Field name should not become title.
    */
   if (
     firstText &&
@@ -1131,10 +1206,14 @@ function getBlockTitle(
 
 /**
  * =========================================================
- * BLOCK TITLE + STYLES
+ * PARSE BLOCK TITLE + STYLES
  * =========================================================
+ *
+ * Hero (hero-v1)
+ *
+ * title = Hero
+ * styles = ["hero-v1"]
  */
-
 function parseBlockTitle(
   value: string,
 ): {
@@ -1151,10 +1230,12 @@ function parseBlockTitle(
 
   const match =
     text.match(
-      /^(.*?)\s*\(([^()]*)\)\s*$/,
+      /^(.*?)\s*\(([^()]+)\)\s*$/,
     );
 
-  if (!match) {
+  if (
+    !match
+  ) {
     return {
       title:
         text,
@@ -1175,7 +1256,9 @@ function parseBlockTitle(
         (style) =>
           style.trim(),
       )
-      .filter(Boolean);
+      .filter(
+        Boolean,
+      );
 
   return {
     title,
@@ -1188,7 +1271,6 @@ function parseBlockTitle(
  * BLOCK HTML
  * =========================================================
  */
-
 function replaceBlockClass(
   html: string,
   id: string,
@@ -1213,15 +1295,16 @@ function createEdsBlockHtml(
     `<div class="${id}-wrapper">`,
     blockHtml,
     '</div>',
-  ].join('\n');
+  ].join(
+    '\n',
+  );
 }
 
 /**
  * =========================================================
- * BLOCK DETECTION
+ * DETECT BLOCKS
  * =========================================================
  */
-
 function detectBlocks(
   html: string,
 ): DetectedBlock[] {
@@ -1256,17 +1339,13 @@ function detectBlocks(
       }
 
       /**
-       * Get block title.
+       * Get title.
        */
       const rawTitle =
         getBlockTitle(
           block,
         );
 
-      /**
-       * If no title is available,
-       * use Block + number.
-       */
       const safeTitle =
         rawTitle ||
         `Block ${index + 1}`;
@@ -1279,14 +1358,14 @@ function detectBlocks(
           safeTitle,
         );
 
-      if (!title) {
+      if (
+        !title
+      ) {
         return;
       }
 
       /**
-       * Clean ID.
-       *
-       * Hero (hero-v1)
+       * Hero
        * -> hero
        */
       const id =
@@ -1296,7 +1375,7 @@ function detectBlocks(
         `block-${index + 1}`;
 
       /**
-       * Original HTML.
+       * Original block HTML.
        */
       const originalHtml =
         $.html(
@@ -1312,7 +1391,7 @@ function detectBlocks(
         );
 
       /**
-       * Final EDS HTML.
+       * Final EDS block HTML.
        */
       const finalHtml =
         createEdsBlockHtml(
@@ -1320,24 +1399,15 @@ function detectBlocks(
           id,
         );
 
-      const detectedBlock:
-        DetectedBlock = {
+      blocks.push({
         title,
-
         id,
-
         fields,
-
         html:
           finalHtml,
-
         _styles:
           styles,
-      };
-
-      blocks.push(
-        detectedBlock,
-      );
+      });
     },
   );
 
@@ -1379,16 +1449,12 @@ function detectBlocks(
 
     blocks.push({
       title,
-
       id,
-
       fields:
         detectFields(
           html,
         ),
-
       html,
-
       _styles:
         styles,
     });
@@ -1402,7 +1468,6 @@ function detectBlocks(
  * DOCX CONVERSION ROUTE
  * =========================================================
  */
-
 export async function converterRoutes(
   app: FastifyInstance,
 ) {
@@ -1419,7 +1484,9 @@ export async function converterRoutes(
         const file =
           await request.file();
 
-        if (!file) {
+        if (
+          !file
+        ) {
           return reply
             .code(400)
             .send({
@@ -1429,7 +1496,7 @@ export async function converterRoutes(
         }
 
         /**
-         * Validate extension.
+         * Validate file extension.
          */
         const filename =
           file.filename
@@ -1458,11 +1525,9 @@ export async function converterRoutes(
          * DOCX -> HTML.
          */
         const result =
-          await mammoth.convertToHtml(
-            {
-              buffer,
-            },
-          );
+          await mammoth.convertToHtml({
+            buffer,
+          });
 
         /**
          * HTML -> EDS HTML.
@@ -1481,7 +1546,7 @@ export async function converterRoutes(
           );
 
         /**
-         * Generate XWalk.
+         * Generate XWalk config.
          */
         const xwalk =
           generateXwalkConfig(
@@ -1489,7 +1554,8 @@ export async function converterRoutes(
           );
 
         /**
-         * Generate block files.
+         * Generate individual
+         * block JSON + HTML.
          */
         const blockFiles =
           blocks.map(
@@ -1543,7 +1609,9 @@ export async function converterRoutes(
           messages:
             result.messages,
         };
-      } catch (error) {
+      } catch (
+        error
+      ) {
         app.log.error(
           error,
         );

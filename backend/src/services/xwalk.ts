@@ -6,6 +6,7 @@ export interface XwalkField {
   value?: string;
   multi?: boolean;
   options?: unknown[];
+  raw?: boolean;
 }
 
 export interface DetectedBlock {
@@ -23,7 +24,9 @@ export interface XwalkConfig {
 }
 
 /**
- * Create block ID.
+ * =========================================================
+ * CREATE BLOCK ID
+ * =========================================================
  *
  * Hero
  * -> hero
@@ -34,20 +37,30 @@ export interface XwalkConfig {
  * AI Platforms
  * -> ai-platforms
  */
-export function createId(value: string): string {
+export function createId(
+  value: string,
+): string {
   return value
     .trim()
-    .replace(/\([^)]*\)/g, '')
+    .replace(
+      /\([^)]*\)/g,
+      '',
+    )
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(
+      /[^a-z0-9]+/g,
+      '-',
+    )
+    .replace(
+      /^-+|-+$/g,
+      '',
+    );
 }
 
 /**
- * Create field name.
- *
- * IMPORTANT:
- * Do NOT lowercase camelCase field names.
+ * =========================================================
+ * CREATE FIELD NAME
+ * =========================================================
  *
  * reference
  * -> reference
@@ -57,14 +70,17 @@ export function createId(value: string): string {
  *
  * Video url
  * -> videoUrl
- *
- * Image Alt
- * -> imageAlt
  */
-export function createFieldName(value: string): string {
-  const text = value
-    .trim()
-    .replace(/\s+/g, ' ');
+export function createFieldName(
+  value: string,
+): string {
+  const text =
+    value
+      .trim()
+      .replace(
+        /\s+/g,
+        ' ',
+      );
 
   if (!text) {
     return '';
@@ -72,60 +88,57 @@ export function createFieldName(value: string): string {
 
   /**
    * Already camelCase.
-   *
-   * referenceAlt
-   * -> referenceAlt
    */
   if (
-    /^[a-z][a-zA-Z0-9]*$/.test(text)
+    /^[a-z][a-zA-Z0-9]*$/.test(
+      text,
+    )
   ) {
     return text;
   }
 
   /**
-   * Convert spaces / hyphens / underscores
-   * to camelCase.
-   *
-   * Video url
-   * -> videoUrl
+   * Convert:
    *
    * Reference Alt
    * -> referenceAlt
    *
-   * Image Alt
-   * -> imageAlt
+   * video-url
+   * -> videoUrl
    */
   return text
     .replace(
       /[-_\s]+(.)?/g,
-      (_, char: string | undefined) =>
-        char ? char.toUpperCase() : '',
+      (
+        _,
+        char: string | undefined,
+      ) =>
+        char
+          ? char.toUpperCase()
+          : '',
     )
     .replace(
       /^[A-Z]/,
-      (char) => char.toLowerCase(),
+      (char) =>
+        char.toLowerCase(),
     );
 }
 
 /**
- * Convert field name to display label.
- *
- * reference
- * -> Reference
+ * =========================================================
+ * CREATE FIELD LABEL
+ * =========================================================
  *
  * referenceAlt
  * -> Reference Alt
- *
- * videoUrl
- * -> Video Url
- *
- * imageAlt
- * -> Image Alt
  */
 export function createFieldLabel(
   value: string,
 ): string {
-  const name = createFieldName(value);
+  const name =
+    createFieldName(
+      value,
+    );
 
   if (!name) {
     return '';
@@ -147,18 +160,18 @@ export function createFieldLabel(
     .trim()
     .replace(
       /\b\w/g,
-      (char) => char.toUpperCase(),
+      (char) =>
+        char.toUpperCase(),
     );
 }
 
 /**
- * Style display name.
+ * =========================================================
+ * STYLE DISPLAY NAME
+ * =========================================================
  *
  * hero-v1
  * -> Hero V1
- *
- * cards
- * -> Cards
  */
 function styleDisplayName(
   value: string,
@@ -175,17 +188,24 @@ function styleDisplayName(
     )
     .replace(
       /\b\w/g,
-      (char) => char.toUpperCase(),
+      (char) =>
+        char.toUpperCase(),
     );
 }
 
 /**
- * Get styles stored on block.
+ * =========================================================
+ * GET BLOCK STYLES
+ * =========================================================
  */
 function getBlockStyles(
   block: DetectedBlock,
 ): string[] {
-  if (!Array.isArray(block._styles)) {
+  if (
+    !Array.isArray(
+      block._styles,
+    )
+  ) {
     return [];
   }
 
@@ -198,25 +218,29 @@ function getBlockStyles(
         style.trim().length > 0,
     )
     .map(
-      (style) => style.trim(),
+      (style) =>
+        style.trim(),
     );
 }
 
 /**
- * Extract styles from title.
+ * =========================================================
+ * EXTRACT STYLES FROM TITLE
+ * =========================================================
  *
  * Hero (hero-v1)
  * -> ["hero-v1"]
  *
- * AI Platforms (cards, swiper)
- * -> ["cards", "swiper"]
+ * Cards (cards, dark)
+ * -> ["cards", "dark"]
  */
 function extractStylesFromTitle(
   title: string,
 ): string[] {
-  const match = title.match(
-    /\(([^()]*)\)\s*$/,
-  );
+  const match =
+    title.match(
+      /\(([^()]+)\)\s*$/,
+    );
 
   if (!match) {
     return [];
@@ -225,19 +249,19 @@ function extractStylesFromTitle(
   return match[1]
     .split(',')
     .map(
-      (style) => style.trim(),
+      (style) =>
+        style.trim(),
     )
     .filter(Boolean);
 }
 
 /**
- * Clean block title.
+ * =========================================================
+ * CLEAN BLOCK TITLE
+ * =========================================================
  *
  * Hero (hero-v1)
  * -> Hero
- *
- * AI Platforms (cards, swiper)
- * -> AI Platforms
  */
 function cleanBlockTitle(
   title: string,
@@ -256,13 +280,18 @@ function cleanBlockTitle(
 }
 
 /**
- * Create Classes field.
+ * =========================================================
+ * CREATE CLASSES FIELD
+ * =========================================================
  */
 function createStyleField(
   block: DetectedBlock,
   blockTitle: string,
 ): XwalkField {
-  let styles = getBlockStyles(block);
+  let styles =
+    getBlockStyles(
+      block,
+    );
 
   if (!styles.length) {
     styles =
@@ -272,9 +301,14 @@ function createStyleField(
   }
 
   return {
-    component: 'multiselect',
-    name: 'classes',
-    label: 'Classes',
+    component:
+      'multiselect',
+
+    name:
+      'classes',
+
+    label:
+      'Classes',
 
     options:
       styles.length > 0
@@ -291,7 +325,8 @@ function createStyleField(
                         style,
                       ),
 
-                    value: style,
+                    value:
+                      style,
                   }),
                 ),
             },
@@ -301,7 +336,9 @@ function createStyleField(
 }
 
 /**
- * Remove automatically detected classes field.
+ * =========================================================
+ * REMOVE EXISTING CLASSES FIELD
+ * =========================================================
  */
 function removeClassesField(
   fields: XwalkField[],
@@ -313,26 +350,37 @@ function removeClassesField(
 }
 
 /**
- * Remove duplicate fields.
+ * =========================================================
+ * REMOVE DUPLICATE FIELDS
+ * =========================================================
  *
- * reference + referenceAlt must
- * remain two separate fields.
+ * reference
+ * referenceAlt
+ *
+ * are different fields.
  */
 function removeDuplicateFields(
   fields: XwalkField[],
 ): XwalkField[] {
-  const seen = new Set<string>();
+  const seen =
+    new Set<string>();
 
   return fields.filter(
     (field) => {
       const key =
         `${field.component}:${field.name}`;
 
-      if (seen.has(key)) {
+      if (
+        seen.has(
+          key,
+        )
+      ) {
         return false;
       }
 
-      seen.add(key);
+      seen.add(
+        key,
+      );
 
       return true;
     },
@@ -340,24 +388,36 @@ function removeDuplicateFields(
 }
 
 /**
- * Generate XWalk configuration.
+ * =========================================================
+ * GENERATE XWALK CONFIG
+ * =========================================================
  */
 export function generateXwalkConfig(
   blocks: DetectedBlock[],
 ): XwalkConfig {
-  const definitions: unknown[] = [];
-  const models: unknown[] = [];
-  const filters: unknown[] = [];
+  const definitions:
+    unknown[] = [];
+
+  const models:
+    unknown[] = [];
+
+  const filters:
+    unknown[] = [];
 
   /**
-   * Prevent duplicate block definitions/models.
+   * Prevent duplicate IDs.
    */
   const processedIds =
     new Set<string>();
 
-  for (const block of blocks) {
+  for (
+    const block of blocks
+  ) {
     /**
-     * Clean title.
+     * Clean block title.
+     *
+     * Hero (hero-v1)
+     * -> Hero
      */
     const blockTitle =
       cleanBlockTitle(
@@ -365,31 +425,43 @@ export function generateXwalkConfig(
       );
 
     /**
-     * Create block ID only
-     * from title.
+     * Block ID.
+     *
+     * Hero
+     * -> hero
      */
     const blockId =
-      createId(blockTitle);
+      createId(
+        blockTitle,
+      );
 
     if (!blockId) {
       continue;
     }
 
-    /**
-     * Prevent duplicate blocks.
-     */
-    if (processedIds.has(blockId)) {
+    if (
+      processedIds.has(
+        blockId,
+      )
+    ) {
       continue;
     }
 
-    processedIds.add(blockId);
+    processedIds.add(
+      blockId,
+    );
 
     /**
-     * Definition.
+     * =====================================================
+     * DEFINITION
+     * =====================================================
      */
     definitions.push({
-      title: blockTitle,
-      id: blockId,
+      title:
+        blockTitle,
+
+      id:
+        blockId,
 
       plugins: {
         xwalk: {
@@ -398,9 +470,14 @@ export function generateXwalkConfig(
               'core/franklin/components/block/v1/block',
 
             template: {
-              name: blockTitle,
-              model: blockId,
-              filter: blockId,
+              name:
+                blockTitle,
+
+              model:
+                blockId,
+
+              filter:
+                blockId,
             },
           },
         },
@@ -408,7 +485,7 @@ export function generateXwalkConfig(
     });
 
     /**
-     * Existing detected fields.
+     * Existing fields.
      */
     let fields =
       removeClassesField(
@@ -416,8 +493,7 @@ export function generateXwalkConfig(
       );
 
     /**
-     * Remove duplicates but DO NOT
-     * merge reference and referenceAlt.
+     * Remove duplicates.
      */
     fields =
       removeDuplicateFields(
@@ -425,7 +501,7 @@ export function generateXwalkConfig(
       );
 
     /**
-     * Classes field always first.
+     * Classes field.
      */
     const styleField =
       createStyleField(
@@ -434,10 +510,13 @@ export function generateXwalkConfig(
       );
 
     /**
-     * Model.
+     * =====================================================
+     * MODEL
+     * =====================================================
      */
     models.push({
-      id: blockId,
+      id:
+        blockId,
 
       fields: [
         styleField,
