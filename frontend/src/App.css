@@ -236,6 +236,10 @@ input {
   position: relative;
 }
 
+.choose-button:hover {
+  opacity: 0.92;
+}
+
 .choose-button input {
   position: absolute;
 
@@ -330,11 +334,18 @@ input {
   font-weight: 700;
 
   cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
 }
 
 .convert-button:hover:not(:disabled) {
   background:
     #ffffff;
+
+  transform:
+    translateY(-1px);
 }
 
 .convert-button:disabled {
@@ -363,6 +374,14 @@ input {
     #b5bcc8;
 
   cursor: pointer;
+
+  transition:
+    background 0.2s ease;
+}
+
+.reset-button:hover {
+  background:
+    #1c222b;
 }
 
 /* =========================
@@ -389,6 +408,8 @@ input {
   font-size: 12px;
 
   text-align: left;
+
+  line-height: 1.5;
 }
 
 /* =========================
@@ -472,6 +493,10 @@ input {
   text-align: left;
 
   cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .block-item:hover {
@@ -622,6 +647,10 @@ input {
   font-size: 13px;
 }
 
+/* =========================
+   DOWNLOAD BUTTONS
+========================= */
+
 .download-actions {
   display: flex;
 
@@ -650,11 +679,18 @@ input {
   font-weight: 700;
 
   cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .download-actions button:hover {
   background:
     #242a34;
+
+  border-color:
+    #4a5565;
 }
 
 /* =========================
@@ -690,6 +726,14 @@ input {
   font-weight: 750;
 
   cursor: pointer;
+
+  transition:
+    color 0.2s ease;
+}
+
+.tab:hover {
+  color:
+    #b5bcc8;
 }
 
 .active-tab {
@@ -741,6 +785,8 @@ input {
   align-items: center;
   justify-content: space-between;
 
+  gap: 15px;
+
   border-bottom:
     1px solid #303744;
 
@@ -749,6 +795,8 @@ input {
 }
 
 .code-file-info {
+  min-width: 0;
+
   display: flex;
   align-items: center;
 
@@ -757,6 +805,8 @@ input {
 
 .window-dots {
   display: flex;
+
+  flex-shrink: 0;
 
   gap: 6px;
 }
@@ -785,6 +835,8 @@ input {
 }
 
 .code-type {
+  flex-shrink: 0;
+
   color:
     #c0c5ce;
 
@@ -793,6 +845,16 @@ input {
 }
 
 .code-filename {
+  min-width: 0;
+
+  overflow: hidden;
+
+  text-overflow:
+    ellipsis;
+
+  white-space:
+    nowrap;
+
   color:
     #8c94a1;
 
@@ -803,8 +865,14 @@ input {
   font-size: 12px;
 }
 
+/* =========================
+   COPY BUTTON
+========================= */
+
 .copy-button {
   height: 42px;
+
+  min-width: 76px;
 
   padding:
     0 14px;
@@ -825,6 +893,28 @@ input {
   font-weight: 700;
 
   cursor: pointer;
+
+  transition:
+    all 0.2s ease;
+}
+
+.copy-button:hover {
+  background:
+    #2a323e;
+
+  border-color:
+    #4a5565;
+}
+
+.copy-button.copied {
+  border-color:
+    #4f8a63;
+
+  background:
+    #1d3526;
+
+  color:
+    #8fd5a4;
 }
 
 /* =========================
@@ -994,6 +1084,14 @@ input {
       18px 20px;
   }
 
+  .brand h1 {
+    font-size: 18px;
+  }
+
+  .brand p {
+    font-size: 12px;
+  }
+
   .sidebar {
     padding:
       20px;
@@ -1002,6 +1100,14 @@ input {
   .content-header {
     flex-direction:
       column;
+
+    margin-bottom:
+      24px;
+  }
+
+  .content-header h2 {
+    font-size:
+      24px;
   }
 
   .download-actions {
@@ -1012,6 +1118,26 @@ input {
     flex: 1;
   }
 
+  .code-window-header {
+    padding:
+      0 12px;
+  }
+
+  .code-file-info {
+    gap:
+      8px;
+  }
+
+  .code-filename {
+    max-width:
+      120px;
+  }
+
+  .copy-button {
+    min-width:
+      76px;
+  }
+
   .code-content {
     max-height:
       550px;
@@ -1020,5 +1146,8 @@ input {
   .code-content pre {
     padding:
       20px;
+
+    font-size:
+      12px;
   }
 }

@@ -15,6 +15,7 @@ function App() {
 
   const [selectedBlockIndex, setSelectedBlockIndex] = useState(0);
   const [activeTab, setActiveTab] = useState('json');
+  const [copied, setCopied] = useState(false);
 
   const blockFiles = useMemo(() => {
     if (!result || !Array.isArray(result.blockFiles)) {
@@ -53,6 +54,7 @@ function App() {
     setError('');
     setSelectedBlockIndex(0);
     setActiveTab('json');
+    setCopied(false);
   };
 
   const handleConvert = async () => {
@@ -67,6 +69,7 @@ function App() {
     setLoading(true);
     setError('');
     setResult(null);
+    setCopied(false);
 
     try {
       const formData = new FormData();
@@ -121,18 +124,6 @@ function App() {
         );
       }
 
-      /*
-       * IMPORTANT
-       *
-       * Backend response ko EXACTLY
-       * as it is save kar rahe hain.
-       *
-       * No transformation.
-       * No field rename.
-       * No field delete.
-       * No merge.
-       */
-
       console.log(
         'EXACT PARSED BACKEND DATA:'
       );
@@ -171,11 +162,18 @@ function App() {
     setError('');
     setSelectedBlockIndex(0);
     setActiveTab('json');
+    setCopied(false);
   };
 
   const selectBlock = (index) => {
     setSelectedBlockIndex(index);
     setActiveTab('json');
+    setCopied(false);
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setCopied(false);
   };
 
   const downloadFile = (
@@ -252,10 +250,20 @@ function App() {
       await navigator.clipboard.writeText(
         content
       );
+
+      setCopied(true);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
     } catch (err) {
       console.error(
         'Copy failed:',
         err
+      );
+
+      setError(
+        'Unable to copy content.'
       );
     }
   };
@@ -274,10 +282,6 @@ function App() {
 
   return (
     <div className="app">
-      {/* =========================
-          HEADER
-      ========================= */}
-
       <header className="top-header">
         <div className="brand">
           <div className="brand-icon">
@@ -296,15 +300,7 @@ function App() {
         </div>
       </header>
 
-      {/* =========================
-          MAIN LAYOUT
-      ========================= */}
-
       <div className="workspace">
-        {/* =========================
-            LEFT SIDEBAR
-        ========================= */}
-
         <aside className="sidebar">
           <div className="upload-card">
             <div className="upload-icon">
@@ -378,10 +374,6 @@ function App() {
             )}
           </div>
 
-          {/* =========================
-              DETECTED BLOCKS
-          ========================= */}
-
           {blockFiles.length > 0 && (
             <div className="blocks-section">
               <div className="blocks-heading">
@@ -444,10 +436,6 @@ function App() {
           )}
         </aside>
 
-        {/* =========================
-            CONTENT
-        ========================= */}
-
         <main className="content">
           {loading && (
             <div className="loading-state">
@@ -479,10 +467,6 @@ function App() {
           {!loading &&
             selectedBlock && (
               <>
-                {/* =========================
-                    BLOCK HEADER
-                ========================= */}
-
                 <div className="content-header">
                   <div>
                     <p className="content-label">
@@ -534,10 +518,6 @@ function App() {
                   </div>
                 </div>
 
-                {/* =========================
-                    TABS
-                ========================= */}
-
                 <div className="tabs">
                   <button
                     type="button"
@@ -548,7 +528,7 @@ function App() {
                         : 'tab'
                     }
                     onClick={() =>
-                      setActiveTab(
+                      handleTabChange(
                         'json'
                       )
                     }
@@ -565,7 +545,7 @@ function App() {
                         : 'tab'
                     }
                     onClick={() =>
-                      setActiveTab(
+                      handleTabChange(
                         'html'
                       )
                     }
@@ -573,10 +553,6 @@ function App() {
                     {'</>'} HTML
                   </button>
                 </div>
-
-                {/* =========================
-                    CODE WINDOW
-                ========================= */}
 
                 <div className="code-window">
                   <div className="code-window-header">
@@ -606,12 +582,18 @@ function App() {
 
                     <button
                       type="button"
-                      className="copy-button"
+                      className={`copy-button ${
+                        copied
+                          ? 'copied'
+                          : ''
+                      }`}
                       onClick={
                         copyContent
                       }
                     >
-                      Copy
+                      {copied
+                        ? '✓ Copied'
+                        : 'Copy'}
                     </button>
                   </div>
 
