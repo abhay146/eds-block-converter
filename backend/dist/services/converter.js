@@ -1,346 +1,378 @@
 import * as cheerio from 'cheerio';
 import { createId, createFieldLabel, createFieldName, generateXwalkConfig, } from './xwalk.js';
-/**
- * =========================================================
- * HELPER
- * =========================================================
- */
+/* =========================================================
+   HELPERS
+========================================================= */
 function normalizeText(value) {
     return value
         .replace(/\u00a0/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
-/**
- * =========================================================
- * GET BLOCK TITLE
- * =========================================================
- */
-function getBlockTitle($, block) {
-    const firstRow = block.find('> div').first();
-    const firstCell = firstRow.find('> div').first();
-    if (!firstCell.length) {
-        return '';
+function normalizeForCompare(value) {
+    return normalizeText(value)
+        .toLowerCase()
+        .replace(/[\s_-]+/g, '');
+}
+/* =========================================================
+   FIELD TYPE
+========================================================= */
+function createFieldFromName(rawName) {
+    const original = normalizeText(rawName);
+    if (!original) {
+        return null;
     }
-    return normalizeText(firstCell.text());
-}
-/**
- * =========================================================
- * CREATE BLOCK HTML
- * =========================================================
- */
-function createBlockHtml(blockId, blockHtml) {
-    return [
-        `<div class="${blockId}-wrapper">`,
-        blockHtml,
-        '</div>',
-    ].join('\n');
-}
-/**
- * =========================================================
- * CREATE FIELD
- * =========================================================
- */
-function createField(component, name) {
-    const fieldName = createFieldName(name);
-    const label = createFieldLabel(name);
-    if (component === 'reference') {
+    const match = original.match(/^(col[1-3]_)(.+)$/i);
+    const prefix = match
+        ? match[1].toLowerCase()
+        : '';
+    const baseName = match
+        ? match[2]
+        : original;
+    const normalized = normalizeForCompare(baseName);
+    /* -------------------------
+       REFERENCE
+    ------------------------- */
+    if (normalized === 'reference') {
         return {
             component: 'reference',
-            name: fieldName,
-            label,
+            name: `${prefix}reference`,
+            label: createFieldLabel(`${prefix}reference`),
             valueType: 'string',
             multi: false,
         };
     }
-    if (component === 'aem-content') {
+    /* -------------------------
+       REFERENCE ALT
+    ------------------------- */
+    if (normalized === 'referencealt') {
         return {
-            component: 'aem-content',
-            name: fieldName,
-            label,
+            component: 'text',
+            valueType: 'string',
+            name: `${prefix}referenceAlt`,
+            label: 'Reference Alt',
+            value: '',
         };
     }
-    if (component === 'richtext') {
+    /* -------------------------
+       IMAGE
+    ------------------------- */
+    if (normalized === 'image') {
+        return {
+            component: 'reference',
+            name: `${prefix}image`,
+            label: 'Image',
+            valueType: 'string',
+            multi: false,
+        };
+    }
+    /* -------------------------
+       IMAGE ALT
+    ------------------------- */
+    if (normalized === 'imagealt') {
+        return {
+            component: 'text',
+            valueType: 'string',
+            name: `${prefix}imageAlt`,
+            label: 'Image Alt',
+            value: '',
+        };
+    }
+    /* -------------------------
+       RICHTEXT
+    ------------------------- */
+    if (normalized === 'richtext') {
         return {
             component: 'richtext',
             valueType: 'string',
-            name: fieldName,
-            label,
+            name: `${prefix}richtext`,
+            label: 'Title and Description',
             raw: true,
         };
     }
+    /* -------------------------
+       DESCRIPTION
+    ------------------------- */
+    if (normalized === 'description') {
+        return {
+            component: 'richtext',
+            valueType: 'string',
+            name: `${prefix}description`,
+            label: 'Description',
+            raw: true,
+        };
+    }
+    /* -------------------------
+       AEM CONTENT / LINK
+    ------------------------- */
+    if (normalized === 'link' ||
+        normalized === 'aemcontent') {
+        return {
+            component: 'aem-content',
+            name: `${prefix}link`,
+            label: 'Link',
+        };
+    }
+    /* -------------------------
+       URL
+    ------------------------- */
+    if (normalized === 'url' ||
+        normalized === 'href') {
+        return {
+            component: 'text',
+            valueType: 'string',
+            name: `${prefix}url`,
+            label: 'URL',
+            value: '',
+        };
+    }
+    /* -------------------------
+       TITLE
+    ------------------------- */
+    if (normalized === 'title') {
+        return {
+            component: 'text',
+            valueType: 'string',
+            name: `${prefix}title`,
+            label: 'Title',
+            value: '',
+        };
+    }
+    /* -------------------------
+       DEFAULT TEXT
+    ------------------------- */
     return {
         component: 'text',
         valueType: 'string',
-        name: fieldName,
-        label,
+        name: createFieldName(original),
+        label: createFieldLabel(original),
         value: '',
     };
 }
-/**
- * =========================================================
- * DETECT FIELD TYPE
- * =========================================================
- */
-function detectFieldType(text) {
-    const normalized = text
-        .toLowerCase()
-        .trim();
-    /**
-     * Reference
-     */
-    if (normalized === 'reference' ||
-        normalized.includes('reference')) {
-        if (normalized.includes('alt')) {
-            return 'text';
+/* =========================================================
+   DUPLICATE FIELDS
+========================================================= */
+function uniqueFields(fields) {
+    const seen = new Set();
+    const result = [];
+    for (const field of fields) {
+        if (!field.name) {
+            continue;
         }
-        return 'reference';
+        const key = field.name.toLowerCase();
+        if (seen.has(key)) {
+            continue;
+        }
+        seen.add(key);
+        result.push(field);
     }
-    /**
-     * AEM Content
-     */
-    if (normalized === 'aem-content' ||
-        normalized === 'aem content' ||
-        normalized === 'link') {
-        return 'aem-content';
-    }
-    /**
-     * Richtext
-     */
-    if (normalized === 'richtext' ||
-        normalized === 'rich text' ||
-        normalized === 'content' ||
-        normalized === 'description') {
-        return 'richtext';
-    }
-    /**
-     * Default
-     */
-    return 'text';
+    return result;
 }
-/**
- * =========================================================
- * GET FIELD NAME FROM CELL
- * =========================================================
- */
-function getFieldName(text) {
+/* =========================================================
+   FIELD NAME EXTRACTION
+========================================================= */
+function extractFieldNames(text) {
     const normalized = normalizeText(text);
     if (!normalized) {
-        return '';
+        return [];
     }
-    /**
-     * Keep known names.
+    /*
+     * Important:
+     *
+     * If Word/Mammoth gives:
+     *
+     * col2_reference
+     * col2_referenceAlt
+     * col2_richtext
+     *
+     * together in one cell, split them.
      */
-    if (normalized.toLowerCase() ===
-        'referencealt') {
-        return 'referenceAlt';
+    const matches = normalized.match(/col[1-3]_(?:referenceAlt|reference|imageAlt|image|richtext|description|link|aem-content|aem_content|url|href|title|text)/gi);
+    if (matches && matches.length) {
+        return matches;
     }
-    if (normalized.toLowerCase() ===
-        'reference') {
-        return 'reference';
-    }
-    if (normalized.toLowerCase() ===
-        'aem-content') {
-        return 'link';
-    }
-    if (normalized.toLowerCase() ===
-        'richtext') {
-        return 'richtext';
-    }
-    return createFieldName(normalized);
+    return [normalized];
 }
-/**
- * =========================================================
- * REMOVE DUPLICATE FIELDS
- * =========================================================
- */
-function removeDuplicateFields(fields) {
-    const seen = new Set();
-    return fields.filter((field) => {
-        if (seen.has(field.name)) {
-            return false;
-        }
-        seen.add(field.name);
-        return true;
-    });
-}
-/**
- * =========================================================
- * DETECT FIELDS FROM BLOCK
- * =========================================================
- */
-function detectFields($, block) {
+/* =========================================================
+   DETECT FIELDS
+========================================================= */
+function detectFields(tableHtml) {
+    const $ = cheerio.load(tableHtml);
     const fields = [];
-    const rows = block.find('> div');
-    /**
-     * First row = Block title.
-     * Remaining rows = fields.
-     */
-    rows.each((rowIndex, rowElement) => {
+    $('tr').each((rowIndex, row) => {
+        /*
+         * First row = block title.
+         */
         if (rowIndex === 0) {
             return;
         }
-        const row = $(rowElement);
-        const cells = row.find('> div');
-        cells.each((_, cellElement) => {
-            const cell = $(cellElement);
-            /**
-             * Each paragraph can represent
-             * a field definition.
-             */
-            const paragraphs = cell.find('p');
-            if (paragraphs.length > 0) {
-                paragraphs.each((__, paragraphElement) => {
-                    const text = normalizeText($(paragraphElement)
-                        .text());
-                    if (!text) {
-                        return;
+        const cells = $(row)
+            .find('th, td')
+            .toArray();
+        for (const cell of cells) {
+            const elements = $(cell)
+                .find('p,h1,h2,h3,h4,h5,h6')
+                .toArray();
+            if (elements.length) {
+                for (const element of elements) {
+                    const text = normalizeText($(element).text());
+                    for (const fieldName of extractFieldNames(text)) {
+                        const field = createFieldFromName(fieldName);
+                        if (field) {
+                            fields.push(field);
+                        }
                     }
-                    const fieldName = getFieldName(text);
-                    if (!fieldName) {
-                        return;
+                }
+            }
+            else {
+                const text = normalizeText($(cell).text());
+                for (const fieldName of extractFieldNames(text)) {
+                    const field = createFieldFromName(fieldName);
+                    if (field) {
+                        fields.push(field);
                     }
-                    const component = detectFieldType(text);
-                    /**
-                     * Special handling
-                     * for referenceAlt.
-                     */
-                    if (fieldName ===
-                        'referenceAlt') {
-                        fields.push({
-                            component: 'text',
-                            valueType: 'string',
-                            name: 'referenceAlt',
-                            label: 'Reference Alt',
-                            value: '',
-                        });
-                        return;
-                    }
-                    fields.push(createField(component, fieldName));
-                });
-                return;
+                }
             }
-            /**
-             * If no paragraphs,
-             * use cell text.
-             */
-            const text = normalizeText(cell.text());
-            if (!text) {
-                return;
-            }
-            const fieldName = getFieldName(text);
-            if (!fieldName) {
-                return;
-            }
-            const component = detectFieldType(text);
-            fields.push(createField(component, fieldName));
-        });
+        }
     });
-    return removeDuplicateFields(fields);
+    return uniqueFields(fields);
 }
-/**
- * =========================================================
- * DETECT BLOCKS
- * =========================================================
- */
-export function detectBlocks(html) {
-    const $ = cheerio.load(html);
-    const detectedBlocks = [];
-    /**
-     * Franklin block tables
+/* =========================================================
+   BLOCK TITLE
+========================================================= */
+function parseBlockTitle(rawTitle) {
+    const text = normalizeText(rawTitle);
+    /*
+     * Hero (hero-v1)
+     *
+     * becomes:
+     *
+     * title  = Hero
+     * styles = hero-v1
      */
-    $('table').each((_, tableElement) => {
-        const table = $(tableElement);
-        const rawTitle = getBlockTitle($, table);
+    const match = text.match(/^(.*?)\s*\(([^()]*)\)\s*$/);
+    if (!match) {
+        return {
+            title: text,
+            styles: [],
+        };
+    }
+    const title = normalizeText(match[1]);
+    const styles = match[2]
+        .split(',')
+        .map((style) => normalizeText(style))
+        .filter(Boolean);
+    return {
+        title,
+        styles,
+    };
+}
+/* =========================================================
+   GET BLOCK TITLE
+========================================================= */
+function getBlockTitle(table) {
+    const firstRow = table.find('tr').first();
+    if (!firstRow.length) {
+        return '';
+    }
+    return normalizeText(firstRow.text());
+}
+/* =========================================================
+   BLOCK HTML
+========================================================= */
+function createBlockHtml(tableHtml, blockId) {
+    const $ = cheerio.load(tableHtml);
+    const table = $('table').first();
+    if (!table.length) {
+        return tableHtml;
+    }
+    table.attr('class', `${blockId} block`);
+    return [
+        `<div class="${blockId}-wrapper">`,
+        $.html(table),
+        '</div>',
+    ].join('\n');
+}
+/* =========================================================
+   DETECT BLOCKS
+========================================================= */
+export function detectBlocks(html) {
+    const blocks = [];
+    if (!html?.trim()) {
+        return blocks;
+    }
+    const $ = cheerio.load(html);
+    $('table').each((index, element) => {
+        const table = $(element);
+        const rawTitle = getBlockTitle(table);
         if (!rawTitle) {
             return;
         }
-        /**
-         * Ignore metadata table.
+        /*
+         * Skip metadata.
          */
         if (rawTitle
             .toLowerCase()
             .includes('metadata')) {
             return;
         }
-        const blockId = createId(rawTitle);
-        if (!blockId) {
+        const { title, styles, } = parseBlockTitle(rawTitle);
+        if (!title) {
             return;
         }
-        const fields = detectFields($, table);
-        /**
-         * Get generated HTML.
-         */
-        const tableHtml = $.html(table);
-        const htmlOutput = createBlockHtml(blockId, tableHtml);
-        detectedBlocks.push({
-            title: rawTitle,
+        const blockId = createId(title) ||
+            `block-${index + 1}`;
+        const originalHtml = $.html(table);
+        const fields = detectFields(originalHtml);
+        const blockHtml = createBlockHtml(originalHtml, blockId);
+        blocks.push({
+            title,
             id: blockId,
             fields,
-            html: htmlOutput,
+            html: blockHtml,
+            styles,
         });
     });
-    return detectedBlocks;
+    return blocks;
 }
-/**
- * =========================================================
- * CREATE INDIVIDUAL BLOCK FILES
- * =========================================================
- *
- * IMPORTANT:
- *
- * blockFiles contains ONLY
- * individual block JSON.
- *
- * Complete XWalk config:
- *
- * definitions
- * models
- * filters
- *
- * stays inside result.xwalk
- *
- */
+/* =========================================================
+   BLOCK FILES
+========================================================= */
 export function createBlockFiles(blocks) {
-    return blocks.map((block) => {
-        const blockId = createId(block.title);
-        return {
-            name: blockId,
-            jsonFile: `${blockId}.json`,
-            htmlFile: `${blockId}.html`,
-            json: {
-                title: block.title
-                    .replace(/\s*\([^)]*\)\s*$/, '')
-                    .trim(),
-                id: blockId,
-                fields: block.fields,
-            },
-            html: block.html || '',
-        };
-    });
+    return blocks.map((block) => ({
+        name: block.id,
+        jsonFile: `${block.id}.json`,
+        htmlFile: `${block.id}.html`,
+        /*
+         * Individual block JSON.
+         *
+         * IMPORTANT:
+         * This does NOT contain definition,
+         * plugins or filter.
+         *
+         * Those are in xwalk.
+         */
+        json: {
+            id: block.id,
+            fields: block.fields,
+        },
+        html: block.html || '',
+    }));
 }
-/**
- * =========================================================
- * MAIN CONVERTER
- * =========================================================
- */
+/* =========================================================
+   MAIN CONVERSION
+========================================================= */
 export function convertToEdsHtml(html) {
-    /**
-     * Detect blocks.
-     */
     const detectedBlocks = detectBlocks(html);
-    /**
-     * Create separate block files.
-     */
     const blockFiles = createBlockFiles(detectedBlocks);
-    /**
-     * Generate complete XWalk config.
+    /*
+     * COMPLETE XWALK JSON
      *
-     * This contains:
-     *
-     * definitions
-     * models
-     * filters
+     * {
+     *   definitions: [],
+     *   models: [],
+     *   filters: []
+     * }
      */
     const xwalk = generateXwalkConfig(detectedBlocks);
     return {
